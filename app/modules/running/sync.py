@@ -15,6 +15,9 @@ from app.modules.running.sources.base import Activity
 log = logging.getLogger(__name__)
 
 STATE_KEY = "sync_state"
+# Bump when stored summaries need a field they lack; the next sync re-pages the whole
+# activity list once (a few calls). 1: gear_id.
+LIST_VERSION = 1
 
 
 class SyncState(BaseModel):
@@ -23,6 +26,7 @@ class SyncState(BaseModel):
     backfill_done: bool = False
     last_sync: float | None = None
     analysis_version: int = 0
+    list_version: int = 0
 
 
 def sync_state(conn: sqlite3.Connection) -> SyncState:
@@ -48,7 +52,8 @@ def _store(
 
 
 def run_sync(conn: sqlite3.Connection, payload: dict) -> None:
-    """Fetch activities newer than the newest stored, then continue the history backfill.
+    """Fetch activities newer than the newest stored, continue the history backfill, then
+    fetch details once for any new gear (1 call each).
 
     Only new activities get their streams fetched; backfilled history is summaries only,
     which keeps the one-time cost to a few list calls. Progress is saved per page, so a
@@ -58,6 +63,10 @@ def run_sync(conn: sqlite3.Connection, payload: dict) -> None:
     if st.analysis_version != ANALYSIS_VERSION:
         enqueue(conn, "running.recompute", dedupe_key="running.recompute")
         st.analysis_version = ANALYSIS_VERSION
+        storage.kv_set(conn, STATE_KEY, st)
+        conn.commit()
+    if st.list_version != LIST_VERSION:
+        st.backfill_done, st.oldest_start, st.list_version = False, None, LIST_VERSION
         storage.kv_set(conn, STATE_KEY, st)
         conn.commit()
     with strava.make_http() as http:
@@ -75,6 +84,8 @@ def run_sync(conn: sqlite3.Connection, payload: dict) -> None:
             acts = src.activities(before=st.oldest_start)
             st.backfill_done = len(acts) < strava.PER_PAGE
             _store(conn, acts, st, fetch_streams=False)
+        for gear_id in storage.unknown_gear(conn):
+            storage.save_gear(conn, gear_id, src.gear(gear_id))
         st.last_sync = time.time()
         storage.kv_set(conn, STATE_KEY, st)
 

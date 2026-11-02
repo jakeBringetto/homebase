@@ -24,6 +24,19 @@ def test_spikes_compare_to_prior_30_days(running_conn):
     assert sorted(ids[i] for i in spikes) == ["3", "5"]
 
 
+def test_spike_caps_from_prior_29_days(running_conn):
+    c = running_conn
+    add_activity(c, 1, "2026-10-01T07:00:00", meters=12000)
+    add_activity(c, 2, "2026-10-20T07:00:00", meters=8000)
+    add_activity(c, 3, "2026-10-21T07:00:00", sport="Ride", meters=40000)  # not a run
+    caps = reports.spike_caps(c, date(2026, 10, 1), date(2026, 11, 20))
+    assert caps[date(2026, 10, 1)] is None  # its own day doesn't count
+    assert caps[date(2026, 10, 2)] == pytest.approx(13200)
+    assert caps[date(2026, 10, 30)] == pytest.approx(13200)  # 29 days after
+    assert caps[date(2026, 10, 31)] == pytest.approx(8800)  # the 12 km run dropped out
+    assert caps[date(2026, 11, 19)] is None
+
+
 def test_weekly_strain_complete_weeks_only(running_conn):
     c = running_conn
     monday = date(2026, 10, 19)

@@ -32,6 +32,7 @@ class AthleteSettings(BaseModel):
     resting_hr: int = Field(default=60, ge=30, le=100)
     zone_bounds: list[int] | None = None  # bpm lower bounds of Z2..Z5; None = % of max
     units: Literal["km", "mi"] = "km"
+    shoe_warn_m: float = Field(default=400 * 1609.344, ge=100_000, le=2_000_000)  # 400 mi
 
     @model_validator(mode="after")
     def _check(self) -> Self:

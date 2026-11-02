@@ -16,6 +16,10 @@
       {% for u in ["km", "mi"] %}<option value="{{ u }}"{% if athlete.units == u %} selected{% endif %}>{{ u }}</option>{% endfor %}
     </select>
   </label>
+  <label>Shoe replacement warning ({{ f.units }})
+    <input type="number" name="shoe_warn" value="{{ f.dist(athlete.shoe_warn_m, unit=False) }}" min="60" max="1200" step="any">
+    <span class="muted">Shoes in use past this distance are flagged on the Shoes tab and homepage. Common advice is 300–500 mi (500–800 km).</span>
+  </label>
   <button>Save</button>
 </form>
 {% endblock %}

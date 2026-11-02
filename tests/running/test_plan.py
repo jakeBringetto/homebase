@@ -97,6 +97,12 @@ def test_plan_pages(client, running_conn):
 
     page = client.get(f"/running/plan?edit={row['id']}").text
     assert 'value="10.0"' in page and "Edit session" in page
+    assert "No runs in 30 days" in page and ">over " not in page
+
+    add_activity(running_conn, 1, "2026-10-27T07:00:00", meters=8 * 1609.344)
+    running_conn.commit()
+    page = client.get("/running/plan?week=2026-10-26").text
+    assert ">over 8.8 mi<" in page  # 10 mi planned on the 29th; 8 × 1.1 floors to 8.8, not 8.7
     edit = {**form, "session_id": str(row["id"]), "minutes": "95", "distance": ""}
     client.post("/running/plan", data=edit)
     row = running_conn.execute("SELECT * FROM running_plan").fetchone()

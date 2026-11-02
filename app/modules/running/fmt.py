@@ -1,5 +1,6 @@
 """Display formatting in the athlete's units. Storage is always SI (m, s, s/km)."""
 
+import math
 from datetime import date, datetime
 
 M_PER_UNIT = {"km": 1000.0, "mi": 1609.344}
@@ -16,8 +17,9 @@ class Fmt:
         self.units = units
         self.m = M_PER_UNIT[units]
 
-    def dist(self, meters: float | None, unit: bool = True) -> str:
-        value = f"{(meters or 0) / self.m:.1f}"
+    def dist(self, meters: float | None, unit: bool = True, floor: bool = False) -> str:
+        x = (meters or 0) / self.m
+        value = f"{math.floor(x * 10 + 1e-9) / 10 if floor else x:.1f}"
         return f"{value} {self.units}" if unit else value
 
     def pace(self, moving_s: float, distance_m: float) -> str:

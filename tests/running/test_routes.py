@@ -35,7 +35,7 @@ def synced(running_conn, settings, fake):
 
 def test_pages_render_empty(client):
     paths = ["/running/", "/running/load", "/running/performance", "/running/activities",
-             "/running/sync", "/running/settings"]  # fmt: skip
+             "/running/sync", "/running/settings", "/running/shoes"]  # fmt: skip
     for path in paths:
         assert client.get(path).status_code == 200, path
     assert "Connect Strava" in client.get("/running/sync").text
@@ -109,6 +109,25 @@ def test_settings_validation_and_recompute(synced, client):
     recomputes = synced.execute("SELECT count(*) FROM jobs WHERE kind = 'running.recompute'")
     assert recomputes.fetchone()[0] == 2  # one at first sync, one for the HR change
     assert "/mi" in client.get("/running/activities").text
+
+
+def test_shoes_page_tile_and_warning_setting(synced, client):
+    synced.execute("UPDATE running_activities SET gear_id = 'g1'")
+    synced.execute("INSERT INTO running_gear VALUES ('g1', 'Trainer', 0, 0)")
+    synced.commit()
+    form = {"max_hr": 190, "resting_hr": 60, "units": "km", "shoe_warn": "20"}
+    assert client.post("/running/settings", data=form).status_code == 400  # under 100 km
+    client.post("/running/settings", data={**form, "shoe_warn": "500"})
+    assert storage.athlete_settings(synced).shoe_warn_m == 500_000
+    page = client.get("/running/shoes").text
+    assert "Trainer" in page and "24.0 km" in page and "in use" in page
+    assert "Replace soon" not in client.get("/").text
+
+    client.post("/running/settings", data={**form, "shoe_warn": "100"})
+    synced.execute("UPDATE running_activities SET distance_m = 40000")
+    synced.commit()
+    assert "replace soon" in client.get("/running/shoes").text
+    assert "Replace soon: Trainer at 120.0 km" in client.get("/").text
 
 
 def test_oauth_flow(client, running_conn):

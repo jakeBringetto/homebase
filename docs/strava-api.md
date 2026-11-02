@@ -13,6 +13,7 @@ Notes from building the `running` module.
 
 - `GET /athlete/activities?after=&per_page=200`: activity list, 1 call per 200 activities.
 - `GET /activities/{id}/streams?keys=time,distance,heartrate,velocity_smooth,cadence,altitude,grade_smooth&key_by_type=true`: streams, 1 call per activity.
+- `GET /gear/{id}`: gear name, brand/model, `retired`, Strava's own total distance. Works with `activity:read_all` (returned 200, 2026-11-01). The activity list carries each activity's `gear_id` (`g…` shoes, `b…` bikes).
 - `POST /oauth/token`: token refresh.
 
 ## Rate limits
@@ -27,7 +28,8 @@ Notes from building the `running` module.
 - **Backfill:** page the activity list newest-first with `before=`. Summaries only.
 - **History streams:** opt-in, queued at low priority for runs without streams.
 - **Ongoing:** poll daily with `after=<newest stored start time>`. New runs get one streams fetch. No webhooks, since they need a public URL.
-- **Never refetch:** streams are stored once. Name and type edits are picked up from list pages.
+- **Never refetch:** streams are stored once, gear details once per gear id. Name, type and gear edits are picked up from list pages.
+- **New summary fields:** bump `sync.LIST_VERSION`; the next sync re-pages the whole list once (about 1 call per 200 activities) so stored rows get the field.
 
 ## Data quirks
 

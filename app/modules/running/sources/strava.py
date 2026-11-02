@@ -4,7 +4,7 @@ import logging
 import sqlite3
 import time
 from datetime import datetime
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import httpx
 import numpy as np
@@ -14,7 +14,7 @@ from app.core.jobs import RetryLater
 from app.core.ratelimit import RateLimiter, Window, next_reset
 from app.modules.running import storage
 from app.modules.running.config import StravaSettings
-from app.modules.running.sources.base import Activity, RunningSource, Streams
+from app.modules.running.sources.base import Activity, Gear, RunningSource, Streams
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +57,7 @@ class _SummaryActivity(BaseModel):
     average_heartrate: float | None = None
     max_heartrate: float | None = None
     manual: bool = False
+    gear_id: str | None = None
 
     def to_activity(self) -> Activity:
         return Activity(
@@ -73,6 +74,7 @@ class _SummaryActivity(BaseModel):
             avg_hr=self.average_heartrate,
             max_hr=self.max_heartrate,
             is_manual=self.manual,
+            gear_id=self.gear_id or None,
         )
 
 
@@ -193,6 +195,16 @@ class StravaSource(RunningSource):
             return None
         r.raise_for_status()
         return parse_streams(r.json())
+
+    def gear(self, gear_id: str) -> Gear | None:
+        r = self._get(f"/gear/{quote(gear_id, safe='')}", {})
+        if r.status_code in (403, 404):
+            log.warning("strava gear %s unavailable: %d", gear_id, r.status_code)
+            return None
+        r.raise_for_status()
+        g = r.json()
+        name = g.get("name") or " ".join(filter(None, (g.get("brand_name"), g.get("model_name"))))
+        return Gear(gear_id, str(name or gear_id), bool(g.get("retired")))
 
 
 def parse_streams(payload: dict) -> Streams | None:

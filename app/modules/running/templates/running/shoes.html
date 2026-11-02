@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Shoes · Running · Homebase{% endblock %}
+{% block content %}
+{% include "running/_tabs.html" %}
+<div class="scroll">
+<table>
+  <tr>
+    <th>Shoe</th><th class="num">Distance</th><th class="num" title="Of the replacement warning set in Settings">% of {{ f.dist(athlete.shoe_warn_m) }}</th>
+    <th class="num">Runs</th><th>First run</th><th>Last run</th><th>Status</th>
+  </tr>
+  {% for s in shoes %}
+  {% set pct = 100 * s.distance_m / athlete.shoe_warn_m %}
+  <tr{% if not s.active %} class="muted"{% endif %}>
+    <td>{{ s.name or s.gear_id }}</td>
+    <td class="num">{{ f.dist(s.distance_m) }}</td>
+    <td class="num">{{ f.num(pct) }}%</td>
+    <td class="num">{{ s.runs }}</td>
+    <td>{{ f.day(s.first) }}</td>
+    <td>{{ f.day(s.last) }}</td>
+    <td>{% if s.retired %}retired{% elif not s.active %}not used in {{ active_days }} days{% elif pct >= 100 %}<b>replace soon</b>{% else %}in use{% endif %}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7" class="muted">No shoes yet. Set the shoe on your runs in Strava, then sync.</td></tr>
+  {% endfor %}
+</table>
+</div>
+<p class="muted">Distance is from runs stored here (rides logged as runs excluded), so it can differ from Strava's total. Shoe names come from Strava once per shoe; set a shoe in Strava and it appears after the next sync.{% if no_gear %} {{ no_gear }} runs have no shoe set.{% endif %}</p>
+{% endblock %}

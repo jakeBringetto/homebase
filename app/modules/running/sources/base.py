@@ -32,6 +32,7 @@ class Activity:
     avg_hr: float | None
     max_hr: float | None
     is_manual: bool
+    gear_id: str | None = None
 
     @property
     def ride_like(self) -> bool:
@@ -48,6 +49,13 @@ class Activity:
         return self.sport in RUN_SPORTS and not self.ride_like
 
 
+@dataclass(frozen=True)
+class Gear:
+    id: str
+    name: str
+    retired: bool
+
+
 class RunningSource(ABC):
     name: str
 
@@ -60,3 +68,7 @@ class RunningSource(ABC):
     @abstractmethod
     def streams(self, source_id: str) -> Streams | None:
         """Streams for one activity, or None if the source has none."""
+
+    @abstractmethod
+    def gear(self, gear_id: str) -> Gear | None:
+        """Details for one piece of gear, or None if unavailable."""

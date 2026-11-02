@@ -44,6 +44,7 @@ class FakeStrava:
         self.activities = sorted(activities, key=lambda a: a["start_date"], reverse=True)
         self.calls: list[str] = []
         self.status_override: dict[str, int] = {}
+        self.gear: dict[str, dict] = {}
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         path = req.url.path
@@ -66,6 +67,8 @@ class FakeStrava:
                 acts = [a for a in acts if _ts(a) > int(q["after"])]
             per, page = int(q["per_page"]), int(q.get("page", 1))
             return httpx.Response(200, json=acts[(page - 1) * per : page * per], headers=headers)
+        if path.startswith("/api/v3/gear/") and (g := self.gear.get(path.rsplit("/", 1)[1])):
+            return httpx.Response(200, json=g, headers=headers)
         if path.endswith("/streams"):
             s = make_streams()
             body = {k: {"data": v.tolist()} for k, v in s.items()}

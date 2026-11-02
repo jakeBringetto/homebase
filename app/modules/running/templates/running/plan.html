@@ -13,6 +13,8 @@
   <div><span class="muted">Sessions done</span><b>{{ wk.done }} / {{ wk.planned }}</b></div>
   <div><span class="muted">Run distance{% if wk.planned_m %} / planned{% endif %}</span>
     <b>{{ f.dist(wk.run_m) }}{% if wk.planned_m %} / {{ f.dist(wk.planned_m) }}{% endif %}</b></div>
+  <div><span class="muted" title="10% over your longest run in the previous 30 days is a spike">Longest run today without a spike</span>
+    <b>{{ f.dist(caps[today], floor=True) if caps[today] else "No runs in 30 days" }}</b></div>
 </section>
 
 <div class="scroll">
@@ -27,7 +29,7 @@
   <tr>
     <td>{% if loop.first %}{% if d.day == today %}<b>{{ label }}</b>{% else %}{{ label }}{% endif %}{% endif %}</td>
     <td>{% if s %}{{ s.kind }}{% if s.notes %} <span class="muted">· {{ s.notes }}</span>{% endif %}{% endif %}</td>
-    <td class="num">{% if s %}{{ [f.dist(s.distance_m) if s.distance_m, f.duration(s.duration_s) if s.duration_s] | select | join(" · ") }}{% endif %}</td>
+    <td class="num">{% if s %}{{ [f.dist(s.distance_m) if s.distance_m, f.duration(s.duration_s) if s.duration_s] | select | join(" · ") }}{% if s.distance_m and s.kind in run_kinds and status != "done" and caps[d.day] and s.distance_m > caps[d.day] %} <span class="badge" title="Over the longest run that day without a spike, based on runs done so far">over {{ f.dist(caps[d.day], floor=True) }}</span>{% endif %}{% endif %}</td>
     <td>{% if a %}<a href="https://www.strava.com/activities/{{ a.source_id }}" rel="noopener" target="_blank">{{ a.name }}</a>{% if not a.is_run %} <span class="muted">({{ a.sport }})</span>{% endif %}{% if a.id in spikes %} <span class="badge" title="Longer than your longest run in the prior 30 days">spike +{{ f.num(spikes[a.id]) }}%</span>{% endif %}{% endif %}</td>
     <td class="num">{{ f.dist(a.distance_m) if a else "" }}</td>
     <td class="num">{{ f.pace(a.moving_s, a.distance_m) if a and a.is_run else "" }}</td>
@@ -44,7 +46,7 @@
   {% endfor %}
 </table>
 </div>
-<p class="muted">Sessions match activities on the same day: run types match runs, "cross" matches other activities.</p>
+<p class="muted">Sessions match activities on the same day: run types match runs, "cross" matches other activities. A planned run is flagged when it's more than 10% longer than your longest run in the 30 days before it (a long-run spike; see Load). Only runs already done count, so later days' limits can rise as you train.</p>
 
 {% if not wk.sessions %}
 <form method="post" action="/running/plan/copy">

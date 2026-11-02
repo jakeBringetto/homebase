@@ -16,7 +16,7 @@ from app.core.web import get_conn, render
 from app.modules.running import config, plan, reports, storage, sync
 from app.modules.running.analysis.steady import MIN_SPEED
 from app.modules.running.config import AthleteSettings
-from app.modules.running.fmt import Fmt
+from app.modules.running.fmt import M_PER_UNIT, Fmt
 from app.modules.running.sources import strava
 
 log = logging.getLogger(__name__)
@@ -274,8 +274,9 @@ def _plan_page(
         request, "running/plan.html", **_ctx(conn), status=status,
         monday=monday, today=today, this_monday=reports.week_start(today),
         prev=monday - timedelta(weeks=1), next=monday + timedelta(weeks=1),
-        wk=plan.week(conn, monday, today), kinds=plan.KINDS,
+        wk=plan.week(conn, monday, today), kinds=plan.KINDS, run_kinds=plan.RUN_KINDS,
         spikes=reports.spike_pcts(conn, monday),
+        caps=reports.spike_caps(conn, min(monday, today), max(monday + timedelta(days=6), today)),
         form=form or blank, edit_id=edit_id, error=error,
     )  # fmt: skip
 
@@ -340,6 +341,14 @@ def plan_copy(conn: Conn, week: Annotated[str, Form()]):
         plan.copy_week(conn, monday - timedelta(weeks=1), monday)
         conn.commit()
     return RedirectResponse(f"/running/plan?week={monday}", 303)
+
+
+@router.get("/shoes")
+def shoes_page(request: Request, conn: Conn):
+    return render(
+        request, "running/shoes.html", **_ctx(conn), shoes=reports.shoes(conn, date.today()),
+        no_gear=reports.runs_without_gear(conn), active_days=reports.SHOE_ACTIVE_DAYS,
+    )  # fmt: skip
 
 
 def _connected(conn: sqlite3.Connection) -> strava.StravaToken | None:
@@ -433,11 +442,18 @@ def save_settings(
     resting_hr: Annotated[int, Form()],
     units: Annotated[str, Form()],
     zone_bounds: Annotated[str, Form()] = "",
+    shoe_warn: Annotated[str, Form()] = "",
 ):
     old = storage.athlete_settings(conn)
     try:
         bounds = [int(x) for x in zone_bounds.replace(" ", "").split(",") if x] or None
-        new = AthleteSettings(max_hr=max_hr, resting_hr=resting_hr, units=units, zone_bounds=bounds)
+        warn = old.shoe_warn_m
+        if shoe_warn.strip():
+            warn = float(shoe_warn) * M_PER_UNIT.get(units, 1.0)
+        new = AthleteSettings(
+            max_hr=max_hr, resting_hr=resting_hr, units=units, zone_bounds=bounds,
+            shoe_warn_m=warn,
+        )  # fmt: skip
     except ValueError as e:
         return render(
             request, "running/settings.html", **_ctx(conn), error=_error_msg(e), saved=False,

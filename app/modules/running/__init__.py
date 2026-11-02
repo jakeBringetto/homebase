@@ -27,7 +27,8 @@ class Running(Module):
         from app.modules.running.fmt import Fmt
         from app.modules.running.sources.strava import TOKEN_KEY, StravaToken
 
-        f = Fmt(storage.athlete_settings(conn).units)
+        athlete = storage.athlete_settings(conn)
+        f = Fmt(athlete.units)
         today = date.today()
         week = reports.periods(conn, today, "week", today)[-1]
         lines = [f"This week: {f.dist(week['distance_m'])} · {week['runs']} runs"]
@@ -40,6 +41,12 @@ class Running(Module):
                 f"Last: {f.day(last['start_local'])}, {f.dist(last['distance_m'])}"
                 f" @ {f.pace(last['moving_s'], last['distance_m'])}"
             )
+        if cap := reports.spike_caps(conn, today, today)[today]:
+            lines.append(f"Longest run today without a spike: {f.dist(cap, floor=True)}")
+        for s in reports.shoes(conn, today):
+            if s["active"] and s["distance_m"] >= athlete.shoe_warn_m:
+                name = s["name"] or s["gear_id"]
+                lines.append(f"Replace soon: {name} at {f.dist(s['distance_m'])}")
         if storage.kv_get(conn, TOKEN_KEY, StravaToken) is None:
             lines.append("Strava not connected")
         return Tile(lines)

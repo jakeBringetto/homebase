@@ -12,7 +12,7 @@ What each chart computes and the research behind it. Running code is in `app/mod
 - **Best efforts** (`analysis/efforts.py`): fastest moving time over 400 m to marathon within a run, from the distance stream resampled to 1 s on a moving clock. Stops don't count, but distance covered during a stop or gap is timed at walking speed (1.5 m/s), so a GPS jump can't make an effort faster.
 - **GAP:** moving time per flat-equivalent km, using the Minetti (2002) energy-cost polynomial on `grade_smooth` (clipped to ±45%). Generous on steep downhills.
 - **Cadence:** steps per minute averaged over moving samples with cadence > 0.
-- **Long-run spikes:** a run more than 10% longer than the longest run in the prior 30 days (Frandsen et al., BJSM 2025, which links single-session spikes to injury risk more than weekly-volume ratios).
+- **Long-run spikes:** a run more than 10% longer than the longest run in the prior 30 days (Frandsen et al., BJSM 2025, which links single-session spikes to injury risk more than weekly-volume ratios). The Plan page turns this into a cap: the longest run on a given day that wouldn't be a spike, based on runs already done.
 - **Easy/hard balance:** Seiler 3-zone shares from zone time (Z1–2 low, Z3 moderate, Z4–5 high). Approximates lactate thresholds with %max zones.
 - **Monotony and strain** (Foster 1998): per Mon–Sun week, monotony = mean daily TRIMP / SD (population, rest days included); strain = weekly load × monotony. Flag at monotony > 2.0.
 - **Race estimate:** Riegel (t₂ = t₁ × (d₂/d₁)^1.06) on the fastest best effort of a mile or longer in the prior 90 days. Shorter efforts are excluded because Riegel overpredicts endurance from them. From training runs, it shows demonstrated fitness, not a race prediction.

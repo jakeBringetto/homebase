@@ -1,9 +1,10 @@
 import time
+from datetime import date
 
 import pytest
 
 from app.core.jobs import Worker
-from app.modules.running import Running, storage, sync
+from app.modules.running import Running, reports, storage, sync
 from app.modules.running.config import AthleteSettings
 from app.modules.running.sources import strava
 from app.modules.running.sources.base import Activity
@@ -75,6 +76,31 @@ def test_ride_logged_as_run_is_excluded(running_conn, fake):
         "SELECT is_run, ride_like, streams_status FROM running_activities WHERE source_id = '30'"
     ).fetchone()
     assert tuple(row) == (0, 1, "none")
+
+
+def test_relist_adds_gear_and_fetches_each_shoe_once(running_conn, fake):
+    connect(running_conn)
+    sync.run_sync(running_conn, {})
+    st = sync.sync_state(running_conn)
+    st.list_version = 0  # stored before gear_id existed
+    storage.kv_set(running_conn, sync.STATE_KEY, st)
+    for a, gear in zip(fake.activities, ["g1", "g1", "g2"], strict=True):
+        a["gear_id"] = gear
+    fake.gear["g1"] = {"id": "g1", "name": "Trainer", "retired": False}  # g2: 404
+    fake.calls.clear()
+
+    sync.run_sync(running_conn, {})
+    assert fake.calls.count("/api/v3/athlete/activities") == 2  # new runs, then one re-page
+    assert sorted(c for c in fake.calls if "/gear/" in c) == ["/api/v3/gear/g1", "/api/v3/gear/g2"]
+    gear = dict(running_conn.execute("SELECT id, name FROM running_gear").fetchall())
+    assert gear == {"g1": "Trainer", "g2": None}
+
+    fake.calls.clear()
+    sync.run_sync(running_conn, {})
+    assert not [c for c in fake.calls if "/gear/" in c]
+    shoes = {s["gear_id"]: s for s in reports.shoes(running_conn, date.today())}
+    assert shoes["g1"]["runs"] == 2 and shoes["g1"]["distance_m"] == 16000
+    assert shoes["g1"]["active"]
 
 
 @pytest.mark.parametrize(

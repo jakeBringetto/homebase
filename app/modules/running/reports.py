@@ -169,6 +169,49 @@ def spike_pcts(conn: sqlite3.Connection, start: date) -> dict[int, float]:
     return {r["id"]: r["pct"] for r in run_spikes(conn, start) if (r["pct"] or 0) > SPIKE_PCT}
 
 
+def spike_caps(conn: sqlite3.Connection, first: date, last: date) -> dict[date, float | None]:
+    """{day: longest run (m) on that day that isn't a spike}, None with no run in the prior 30 days.
+
+    Uses whole days (the 29 before `day`), which is slightly stricter than `run_spikes`'s
+    30 × 24 h window. Planned sessions don't count; only runs already done.
+    """
+    longest = dict(
+        conn.execute(
+            "SELECT date(start_local), max(distance_m) FROM running_activities"
+            " WHERE is_run AND start_local >= ? AND start_local < ? GROUP BY 1",
+            ((first - timedelta(days=29)).isoformat(), last.isoformat()),
+        ).fetchall()
+    )
+    caps = {}
+    for i in range((last - first).days + 1):
+        day = first + timedelta(days=i)
+        prior = [longest.get((day - timedelta(days=k)).isoformat(), 0) for k in range(1, 30)]
+        caps[day] = max(prior) * (1 + SPIKE_PCT / 100) if max(prior) else None
+    return caps
+
+
+SHOE_ACTIVE_DAYS = 30  # a shoe unused this long counts as out of rotation
+
+
+def shoes(conn: sqlite3.Connection, today: date) -> list[dict]:
+    """Per gear id on runs: name, runs, distance, first/last day, `active`; newest use first."""
+    rows = conn.execute(
+        "SELECT a.gear_id, g.name, coalesce(g.retired, 0) AS retired, count(*) AS runs,"
+        " sum(a.distance_m) AS distance_m, min(date(a.start_local)) AS first,"
+        " max(date(a.start_local)) AS last"
+        " FROM running_activities a LEFT JOIN running_gear g ON g.id = a.gear_id"
+        " WHERE a.is_run AND a.gear_id IS NOT NULL GROUP BY a.gear_id ORDER BY last DESC"
+    ).fetchall()
+    cutoff = (today - timedelta(days=SHOE_ACTIVE_DAYS)).isoformat()
+    return [dict(r) | {"active": not r["retired"] and r["last"] >= cutoff} for r in rows]
+
+
+def runs_without_gear(conn: sqlite3.Connection) -> int:
+    return conn.execute(
+        "SELECT count(*) FROM running_activities WHERE is_run AND gear_id IS NULL"
+    ).fetchone()[0]
+
+
 def calendar(conn: sqlite3.Connection, start: date, today: date) -> tuple[list[dict], list[float]]:
     """Daily run distance as one grid per year (newest first), with quartile level 0-4.
 
