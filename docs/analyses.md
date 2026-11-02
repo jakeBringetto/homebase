@@ -17,6 +17,7 @@ What each chart computes and the research behind it. Running code is in `app/mod
 - **Monotony and strain** (Foster 1998): per Mon–Sun week, monotony = mean daily TRIMP / SD (population, rest days included); strain = weekly load × monotony. Flag at monotony > 2.0.
 - **Race estimate:** Riegel (t₂ = t₁ × (d₂/d₁)^1.06) on the fastest best effort of a mile or longer in the prior 90 days. Shorter efforts are excluded because Riegel overpredicts endurance from them. From training runs, it shows demonstrated fitness, not a race prediction.
 - **HR vs expected:** each run's avg HR minus a speed→HR line fit on the prior 90 days of runs (≥ 10 runs). Summary data only.
+- **Running form** (Form tab): Garmin's per-run averages (ground contact time, vertical ratio, stride length, vertical oscillation, power, cadence) joined to Strava runs on start time ±60 s and distance within 2%, at read time. Charts plot each metric against pace (range vs earlier runs), since form changes with speed; the table averages per period weighted by moving time.
 - **Consistency calendar:** daily grid per year; levels from the range's run-distance quartiles.
 
 ## Recovery

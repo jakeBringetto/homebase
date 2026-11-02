@@ -9,8 +9,8 @@ import httpx
 import pytest
 
 from app.core import db
-from app.modules.recovery import Recovery, config
-from app.modules.recovery.sources import garmin
+from app.core import garmin as client
+from app.modules.recovery import Recovery
 from app.modules.running import Running
 
 KEY = "GCDC_test"
@@ -35,13 +35,14 @@ class FakeGarmin:
         self.missing = set(missing)
         self.calls: list[tuple[str, dict]] = []
         self.status_override: dict[str, list[int]] = {}
+        self.activities: list[dict] = []  # activity search results, newest first
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         path, q = req.url.path, dict(req.url.params)
         self.calls.append((path, q))
         if codes := self.status_override.get(path):
             return httpx.Response(codes.pop(0))
-        if path == garmin.TOKEN_PATH:
+        if path == client.TOKEN_PATH:
             if req.headers.get("accept") == "application/json":
                 return httpx.Response(406)
             assert req.headers["authorization"] == f"ApiKey {KEY}"
@@ -60,6 +61,9 @@ class FakeGarmin:
             return httpx.Response(
                 200, json=[self._sleep(d) for d in _days(q["startDate"], q["endDate"])]
             )
+        if path == "/activitylist-service/activities/search/activities":
+            start, limit = int(q["start"]), int(q["limit"])
+            return httpx.Response(200, json=self.activities[start : start + limit])
         return httpx.Response(404)  # fmt: skip
 
     def _daily(self, d: date) -> dict:
@@ -97,7 +101,7 @@ class FakeGarmin:
         }  # fmt: skip
 
     def data_calls(self) -> list[str]:
-        return [p for p, _ in self.calls if p != garmin.TOKEN_PATH]
+        return [p for p, _ in self.calls if p != client.TOKEN_PATH]
 
 
 @pytest.fixture
@@ -117,12 +121,12 @@ def recovery_conn(settings):
 def garmin_fake(monkeypatch):
     """Route Garmin HTTP to a FakeGarmin; key configured."""
     f = FakeGarmin()
-    monkeypatch.setattr(garmin, "make_http", lambda: httpx.Client(transport=httpx.MockTransport(f)))
+    monkeypatch.setattr(client, "make_http", lambda: httpx.Client(transport=httpx.MockTransport(f)))
     set_key(monkeypatch, KEY)
     return f
 
 
 def set_key(monkeypatch, key: str) -> None:
     monkeypatch.setattr(
-        config, "get_garmin_settings", lambda: config.GarminSettings(_env_file=None, api_key=key)
+        client, "get_settings", lambda: client.GarminSettings(_env_file=None, api_key=key)
     )

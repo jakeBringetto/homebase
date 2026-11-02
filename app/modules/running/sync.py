@@ -1,15 +1,17 @@
-"""Job handlers: activity sync (new + backfill), per-run streams, metric recompute."""
+"""Job handlers: activity sync (new + backfill), per-run streams, metric recompute, Garmin form."""
 
 import logging
 import sqlite3
 import time
+from datetime import date, timedelta
 
 from pydantic import BaseModel
 
+from app.core import garmin as core_garmin
 from app.core.jobs import RetryLater, enqueue
 from app.modules.running import config, storage
 from app.modules.running.analysis.metrics import ANALYSIS_VERSION, analyze
-from app.modules.running.sources import strava
+from app.modules.running.sources import garmin, strava
 from app.modules.running.sources.base import Activity
 
 log = logging.getLogger(__name__)
@@ -88,6 +90,40 @@ def run_sync(conn: sqlite3.Connection, payload: dict) -> None:
             storage.save_gear(conn, gear_id, src.gear(gear_id))
         st.last_sync = time.time()
         storage.kv_set(conn, STATE_KEY, st)
+
+
+GARMIN_KEY = "garmin_state"
+GARMIN_HISTORY_DAYS = 365  # Garmin returned a year in the spike
+GARMIN_TRAIL_DAYS = 3  # re-fetch recent days: the watch can sync a run late
+
+
+class GarminState(BaseModel):
+    through: str | None = None  # last local day fetched (YYYY-MM-DD)
+
+
+def garmin_state(conn: sqlite3.Connection) -> GarminState:
+    return storage.kv_get(conn, GARMIN_KEY, GarminState) or GarminState()
+
+
+def run_garmin(conn: sqlite3.Connection, payload: dict) -> None:
+    """Fetch Garmin form metrics for runs since the last fetch (a year the first time)."""
+    settings = core_garmin.get_settings()
+    if not settings.configured:
+        return
+    today = date.today()
+    st = garmin_state(conn)
+    start = today - timedelta(days=GARMIN_HISTORY_DAYS)
+    if st.through:
+        start = max(start, date.fromisoformat(st.through) - timedelta(days=GARMIN_TRAIL_DAYS))
+    with core_garmin.make_http() as http:
+        try:
+            runs = garmin.fetch_runs(core_garmin.GarminClient(conn, settings, http), start, today)
+        except core_garmin.KeyInvalid as e:
+            log.warning("garmin form sync stopped: %s", e)
+            return
+    storage.upsert_garmin(conn, runs)
+    st.through = today.isoformat()
+    storage.kv_set(conn, GARMIN_KEY, st)
 
 
 def history_without_streams(conn: sqlite3.Connection) -> list[int]:

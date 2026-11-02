@@ -24,9 +24,10 @@ class Recovery(Module):
     def tile(self, conn: sqlite3.Connection) -> Tile:
         from datetime import date
 
-        from app.modules.recovery import config, reports
+        from app.core import garmin
+        from app.modules.recovery import reports
 
-        if not config.get_garmin_settings().configured:
+        if not garmin.get_settings().configured:
             return Tile(["Set GARMIN_API_KEY in .env"])
         latest = reports.latest(conn, date.today())
         lines = []

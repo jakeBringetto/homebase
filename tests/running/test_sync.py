@@ -174,4 +174,4 @@ def test_full_pipeline_through_worker(running_conn, fake, settings):
         pass
     assert statuses(running_conn)["20"] == "stored"
     pending = running_conn.execute("SELECT kind FROM jobs WHERE status = 'pending'").fetchall()
-    assert [r[0] for r in pending] == ["running.sync"]  # next daily run
+    assert sorted(r[0] for r in pending) == ["running.garmin", "running.sync"]  # next daily runs

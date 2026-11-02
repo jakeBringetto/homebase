@@ -9,11 +9,11 @@ import numpy as np
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import RedirectResponse
 
+from app.core import garmin
 from app.core.charts import Series, chart, day_epoch
 from app.core.jobs import enqueue
 from app.core.web import get_conn, render
-from app.modules.recovery import config, reports, sync
-from app.modules.recovery.sources import garmin
+from app.modules.recovery import reports, sync
 from app.modules.running import reports as running_reports
 
 router = APIRouter()
@@ -44,7 +44,7 @@ def overview(request: Request, conn: Conn, rng: RangeKey = None):
         response=reports.next_morning(conn, start, today),
         readiness=reports.readiness(conn, start),
         expect_days=running_reports.EXPECT_DAYS,
-        configured=config.get_garmin_settings().configured,
+        configured=garmin.get_settings().configured,
         has_data=reports.counts(conn)["hrv"][0] > 0,
     )
 
@@ -119,7 +119,7 @@ def response_chart(conn: Conn, rng: RangeKey = None):
 
 @router.get("/sync")
 def sync_page(request: Request, conn: Conn):
-    settings = config.get_garmin_settings()
+    settings = garmin.get_settings()
     auth = garmin.auth_state(conn, settings) if settings.configured else None
     return render(
         request,

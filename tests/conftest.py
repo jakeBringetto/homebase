@@ -1,10 +1,17 @@
 import pytest
 
-from app.core import db
+from app.core import db, garmin
 from app.core.auth import hash_password
 from app.core.config import Settings
 
 PASSWORD = "correct horse"
+
+
+@pytest.fixture(autouse=True)
+def no_garmin_key(monkeypatch):
+    """Never read a real GARMIN_API_KEY from .env; tests that need one set a fake key."""
+    unset = garmin.GarminSettings(_env_file=None, api_key="")
+    monkeypatch.setattr(garmin, "get_settings", lambda: unset)
 
 
 @pytest.fixture(scope="session")

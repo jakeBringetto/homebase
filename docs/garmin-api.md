@@ -1,6 +1,6 @@
 # Garmin Connect Personal API
 
-Notes from building the `recovery` module. Tags:
+Notes from building the `recovery` module and running form. The shared client (key, token, limiter) is `app/core/garmin.py`. Tags:
 - **[S]** observed in real API calls (2026-11-01)
 - **[V]** documented, with the source below
 - **[I]** inferred
@@ -103,7 +103,10 @@ Others: v1 single-day summary, steps (28 d), hydration (31 d), SpO2 acclimation,
   - Size and HR: `duration`/`elapsedDuration` (s), `distance` (m), `averageHR`, `hrTimeInZone_1..5`
   - Running form: `avgPower` (W), `avgGroundContactTime` (ms), `avgVerticalOscillation` (cm), `avgStrideLength` (cm), `avgVerticalRatio`, `averageRunningCadenceInStepsPerMinute`
   - Load and fitness: `activityTrainingLoad`, `vO2MaxValue`
-  - Power and running dynamics averages are in the summaries [S], so no FIT download is needed for per-run averages.
+  - Power and running dynamics averages are in the summaries [S], so no FIT download is needed for per-run averages. Present on nearly every watch-recorded run; `avgStrideLength` is in cm (it matches speed / cadence) [S].
+  - **`vO2MaxValue` and `activityTrainingLoad` were null on every run** (a year of Forerunner 165 runs, 2026-11-01), though the spec documents `vO2MaxValue` [S]. Activity detail (`/activity-service/activity/{id}`) has no VO2max either, only `summaryDTO.trainingEffect` and related labels [S].
+- **Fitness age** (`/fitnessage-service/fitnessage/v2/{calendarDate}`): `fitnessAge`, `achievableFitnessAge` and components (vigorous days/minutes, RHR, BMI). No VO2max [S]. The older `/fitnessage-service/fitnessage/{date}` path is 404, as is Connect's `/metrics-service/metrics/maxmet/...` [S].
+- **Activity search** returns a bare JSON list; `activityType.typeKey` is `running` (filtering with `activityType=running` worked) [S]. A year of runs fit in one call at `limit=99`.
 
 ## Matching Garmin and Strava activities
 

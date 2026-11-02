@@ -1,4 +1,4 @@
-{% set tabs = [("/running/", "Overview"), ("/running/load", "Load"), ("/running/performance", "Performance"), ("/running/plan", "Plan"), ("/running/activities", "Activities"), ("/running/shoes", "Shoes"),("/running/sync", "Sync"), ("/running/settings", "Settings")] %}
+{% set tabs = [("/running/", "Overview"), ("/running/load", "Load"), ("/running/performance", "Performance"), ("/running/form", "Form"),("/running/plan", "Plan"), ("/running/activities", "Activities"), ("/running/shoes", "Shoes"),("/running/sync", "Sync"), ("/running/settings", "Settings")] %}
 <div class="tabs">
   {% for href, label in tabs %}
   <a href="{{ href }}"{% if request.url.path == href %} aria-current="page"{% endif %}>{{ label }}</a>

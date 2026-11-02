@@ -1,4 +1,4 @@
-"""Small JSON documents in a module's `<slug>_kv` table (key TEXT PK, value TEXT)."""
+"""Small JSON documents in a `<slug>_kv` table, or `core_kv` (key TEXT PK, value TEXT)."""
 
 import sqlite3
 

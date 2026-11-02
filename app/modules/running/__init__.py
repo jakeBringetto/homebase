@@ -64,7 +64,8 @@ class Running(Module):
             "running.sync": sync.run_sync,
             "running.streams": sync.fetch_streams,
             "running.recompute": sync.recompute,
+            "running.garmin": sync.run_garmin,
         }
 
     def recurring(self) -> list[Recurring]:
-        return [Recurring("running.sync", 86400)]
+        return [Recurring("running.sync", 86400), Recurring("running.garmin", 86400)]

@@ -8,7 +8,8 @@ from datetime import date, timedelta
 
 from pydantic import BaseModel
 
-from app.modules.recovery import config, storage
+from app.core import garmin as client
+from app.modules.recovery import storage
 from app.modules.recovery.sources import garmin
 
 log = logging.getLogger(__name__)
@@ -54,7 +55,7 @@ def run_sync(conn: sqlite3.Connection, payload: dict) -> None:
 
     Progress is saved after every call, so a rate-limit deferral resumes where it stopped.
     """
-    settings = config.get_garmin_settings()
+    settings = client.get_settings()
     if not settings.configured:
         log.info("GARMIN_API_KEY not set; skipping sync")
         return
@@ -62,8 +63,8 @@ def run_sync(conn: sqlite3.Connection, payload: dict) -> None:
     st = sync_state(conn)
     if not payload.get("force") and is_fresh(conn, st, today):
         return
-    with garmin.make_http() as http:
-        src = garmin.GarminSource(conn, settings, http)
+    with client.make_http() as http:
+        src = garmin.GarminSource(client.GarminClient(conn, settings, http))
         try:
             for kind, fetch, cap, trail in _kinds(src):
                 start = today - timedelta(days=HISTORY_DAYS)
@@ -76,7 +77,7 @@ def run_sync(conn: sqlite3.Connection, payload: dict) -> None:
                     storage.kv_set(conn, STATE_KEY, st)
                     conn.commit()
                     start = end + timedelta(days=1)
-        except garmin.KeyInvalid as e:
+        except client.KeyInvalid as e:
             log.warning("garmin sync stopped: %s", e)
             return
     st.last_full_sync = time.time()

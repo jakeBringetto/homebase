@@ -212,6 +212,52 @@ def runs_without_gear(conn: sqlite3.Connection) -> int:
     ).fetchone()[0]
 
 
+# Garmin per-run form metrics: (column, label, unit). Lower GCT and vertical ratio at the
+# same pace mean less time and bounce per step.
+FORM_METRICS = (
+    ("gct_ms", "Ground contact time", "ms"),
+    ("vert_ratio", "Vertical ratio", "%"),
+    ("stride_cm", "Stride length", "cm"),
+    ("vert_osc_cm", "Vertical oscillation", "cm"),
+    ("avg_power_w", "Power", "W"),
+    ("cadence_spm", "Cadence", "spm"),
+)
+FORM_MATCH_S = 60  # Garmin and Strava start times matched to the second on every run checked
+FORM_MATCH_DIST = 0.02
+
+
+def form_runs(conn: sqlite3.Connection, since: date | None = None) -> list[sqlite3.Row]:
+    """Runs joined to their Garmin form row (same start ±60 s, distance within 2%), oldest first."""
+    cols = ", ".join(f"g.{c}" for c, _, _ in FORM_METRICS)
+    return conn.execute(
+        f"SELECT a.id, a.start_local, a.distance_m, a.moving_s, {cols}"
+        " FROM running_activities a JOIN running_garmin g"
+        "  ON g.start_time BETWEEN a.start_time - ? AND a.start_time + ?"
+        "  AND abs(g.distance_m - a.distance_m) <= ? * a.distance_m"
+        " WHERE a.is_run AND a.moving_s > 0 AND a.distance_m > 0 AND a.start_local >= ?"
+        " ORDER BY a.start_local",
+        (FORM_MATCH_S, FORM_MATCH_S, FORM_MATCH_DIST, (since or date.min).isoformat()),
+    ).fetchall()
+
+
+def form_periods(conn: sqlite3.Connection, start: date, bucket: str) -> list[dict]:
+    """Per period (newest first): runs, and each form metric averaged weighted by moving time."""
+    groups: dict[date, list] = {}
+    for r in form_runs(conn, start):
+        groups.setdefault(floor(date.fromisoformat(r["start_local"][:10]), bucket), []).append(r)
+    out = []
+    for key in sorted(groups, reverse=True):
+        rows = groups[key]
+        avg = {}
+        for col, _, _ in FORM_METRICS:
+            pairs = [(r[col], r["moving_s"]) for r in rows if r[col] is not None]
+            w = sum(s for _, s in pairs)
+            avg[col] = sum(v * s for v, s in pairs) / w if w else None
+        moving, dist = sum(r["moving_s"] for r in rows), sum(r["distance_m"] for r in rows)
+        out.append({"start": key, "runs": len(rows), "moving_s": moving, "distance_m": dist, **avg})
+    return out
+
+
 def calendar(conn: sqlite3.Connection, start: date, today: date) -> tuple[list[dict], list[float]]:
     """Daily run distance as one grid per year (newest first), with quartile level 0-4.
 

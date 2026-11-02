@@ -6,10 +6,11 @@ import sqlite3
 from datetime import date, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, Query, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
 
+from app.core import garmin
 from app.core.charts import Series, chart, day_epoch, merge_points
 from app.core.jobs import enqueue
 from app.core.web import get_conn, render
@@ -107,6 +108,48 @@ def performance_page(request: Request, conn: Conn, rng: RangeKey = None):
         }
 
     return _page(request, conn, rng, "performance.html", build)
+
+
+FORM_CHARTS = ("gct_ms", "vert_ratio", "stride_cm")
+
+
+@router.get("/form")
+def form_page(request: Request, conn: Conn, rng: RangeKey = None):
+    def build(ctx, r, start, today):
+        return {
+            "periods": reports.form_periods(conn, start, r.table),
+            "metrics": reports.FORM_METRICS,
+            "charts": [m for m in reports.FORM_METRICS if m[0] in FORM_CHARTS],
+            "garmin_runs": conn.execute("SELECT count(*) FROM running_garmin").fetchone()[0],
+            "matched": len(reports.form_runs(conn)),
+            "garmin_state": sync.garmin_state(conn),
+            "garmin_configured": garmin.get_settings().configured,
+        }
+
+    return _page(request, conn, rng, "form.html", build)
+
+
+@router.get("/charts/form/{metric}.json")
+def form_chart(conn: Conn, metric: str, rng: RangeKey = None):
+    """One form metric against pace: runs in the range vs earlier runs."""
+    labels = {c: f"{label} ({unit})" for c, label, unit in reports.FORM_METRICS}
+    if metric not in FORM_CHARTS:
+        raise HTTPException(404)
+    f = _ctx(conn)["f"]
+    r, start, _ = _range(conn, rng)
+    inside, before = [], []
+    for a in reports.form_runs(conn):
+        if a[metric] is not None:
+            point = (round(a["moving_s"] / (a["distance_m"] / f.m)), round(a[metric], 1))
+            (inside if a["start_local"] >= start.isoformat() else before).append(point)
+    groups, names = [inside], [r.label if r.days else "All runs"]
+    if r.days and before:
+        groups, names = [before, inside], ["Earlier runs", r.label]
+    xs, ys = merge_points(groups)
+    return chart(
+        xs, [Series(n, y, "points") for n, y in zip(names, ys, strict=True)],
+        labels[metric], x_label=f"Pace (min/{f.units})", x_format="pace",
+    )  # fmt: skip
 
 
 @router.get("/charts/distance.json")

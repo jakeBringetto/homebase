@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "macros.html" import chart %}
+{% block title %}Form · Running · Homebase{% endblock %}
+{% block content %}
+{% include "running/_tabs.html" %}
+{% set q = "?range=" ~ rng.key %}
+{% include "running/_ranges.html" %}
+
+<p class="muted">Running form from your Garmin watch: per-run averages from Garmin's activity summaries, matched to Strava runs by start time and distance. {{ matched }} of {{ garmin_runs }} Garmin runs matched.{% if garmin_state.through %} Fetched through {{ garmin_state.through }}.{% endif %}</p>
+{% if not garmin_configured %}
+<p class="error">Set GARMIN_API_KEY in .env and restart to fetch form data.</p>
+{% endif %}
+
+{% if periods %}
+<p class="muted">Form changes with pace, so compare runs at similar paces. At the same pace, shorter ground contact and a lower vertical ratio (bounce per stride) mean less effort per step; a shorter stride at the same pace means a higher cadence, which lowers hip and knee loading (Heiderscheit et al. 2011). Garmin computes these from the watch's accelerometer, so treat small changes as noise.</p>
+{% for col, label, unit in charts %}
+<h2>{{ label }}</h2>
+{{ chart("/running/charts/form/" ~ col ~ ".json" ~ q, 260) }}
+{% endfor %}
+
+<h2>By {{ rng.table }}</h2>
+<p class="muted">Averages weighted by moving time.</p>
+<div class="scroll">
+<table>
+  <tr>
+    <th>{{ rng.table | capitalize }}</th><th class="num">Runs</th><th class="num">Distance</th><th class="num">Pace</th>
+    {% for col, label, unit in metrics %}<th class="num">{{ label }} ({{ unit }})</th>{% endfor %}
+  </tr>
+  {% for p in periods %}
+  <tr>
+    <td>{{ f.period(p.start, rng.table) }}</td>
+    <td class="num">{{ p.runs }}</td>
+    <td class="num">{{ f.dist(p.distance_m) }}</td>
+    <td class="num">{{ f.pace(p.moving_s, p.distance_m) }}</td>
+    {% for col, label, unit in metrics %}<td class="num">{{ f.num(p[col], 1 if col in ("vert_ratio", "vert_osc_cm") else 0) }}</td>{% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+</div>
+{% else %}
+<p class="muted">No form data in this range yet.</p>
+{% endif %}
+{% endblock %}

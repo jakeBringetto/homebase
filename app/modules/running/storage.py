@@ -1,5 +1,6 @@
 """Persistence for running data: activities, streams, metrics, and small KV documents."""
 
+import dataclasses
 import io
 import sqlite3
 import time
@@ -12,6 +13,7 @@ from app.core.jobs import enqueue
 from app.modules.running.analysis.metrics import Analysis
 from app.modules.running.config import AthleteSettings
 from app.modules.running.sources.base import Activity, Gear, Streams
+from app.modules.running.sources.garmin import GarminRun
 
 
 def kv_get[M: BaseModel](conn: sqlite3.Connection, key: str, model: type[M]) -> M | None:
@@ -70,6 +72,18 @@ def save_gear(conn: sqlite3.Connection, gear_id: str, g: Gear | None) -> None:
     conn.execute(
         "INSERT OR REPLACE INTO running_gear (id, name, retired, fetched_at) VALUES (?, ?, ?, ?)",
         (gear_id, g and g.name, bool(g and g.retired), time.time()),
+    )
+
+
+def upsert_garmin(conn: sqlite3.Connection, runs: list[GarminRun]) -> None:
+    """Insert or replace Garmin form rows (caller commits)."""
+    if not runs:
+        return
+    cols = [f.name for f in dataclasses.fields(GarminRun)] + ["fetched_at"]
+    conn.executemany(
+        f"INSERT OR REPLACE INTO running_garmin ({', '.join(cols)})"
+        f" VALUES ({', '.join('?' * len(cols))})",
+        [(*dataclasses.astuple(r), time.time()) for r in runs],
     )
 
 
