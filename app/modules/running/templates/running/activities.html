@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Activities · Running · Homebase{% endblock %}
+{% block content %}
+{% include "running/_tabs.html" %}
+<div class="scroll">
+<table>
+  <tr>
+    <th>Date</th><th>Name</th><th>Type</th><th class="num">Distance</th><th class="num">Time</th>
+    <th class="num">Pace</th><th class="num" title="Grade-adjusted pace: flat-ground equivalent">GAP</th>
+    <th class="num">Avg HR</th><th class="num" title="Steps per minute">Cadence</th><th class="num">EF</th>
+    <th class="num" title="Efficiency drop, first vs second half (runs over 45 min)">Drift %</th>
+    <th class="num">TRIMP</th><th class="num" title="Minutes used for HR-at-pace">Steady min</th>
+  </tr>
+  {% for a in rows %}
+  <tr{% if not a.is_run %} class="muted"{% endif %}>
+    <td>{{ f.day(a.start_local) }}</td>
+    <td><a href="https://www.strava.com/activities/{{ a.source_id }}" rel="noopener" target="_blank">{{ a.name }}</a>{% if a.id in spikes %} <span class="badge" title="Longer than your longest run in the prior 30 days">spike +{{ f.num(spikes[a.id]) }}%</span>{% endif %}</td>
+    <td>{{ a.sport }}{% if a.ride_like %} <span title="Faster than 4:00/mi over 800 m, or 5:00/mi over 2+ mi; excluded from running stats">(likely ride)</span>{% endif %}</td>
+    <td class="num">{{ f.dist(a.distance_m) }}</td>
+    <td class="num">{{ f.duration(a.moving_s) }}</td>
+    <td class="num">{{ f.pace(a.moving_s, a.distance_m) if a.is_run else "–" }}</td>
+    <td class="num">{{ f.pace_km(a.gap_s_km) if a.is_run else "–" }}</td>
+    <td class="num">{{ f.num(a.avg_hr) }}</td>
+    <td class="num">{{ f.num(a.cadence_spm) }}</td>
+    <td class="num">{{ f.num(a.ef, 2) }}</td>
+    <td class="num">{{ f.num(a.decoupling_pct, 1) }}</td>
+    <td class="num">{{ f.num(a.trimp) }}</td>
+    <td class="num">{{ f.num(a.steady_s / 60) if a.steady_s else "–" }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="13" class="muted">No activities yet.</td></tr>
+  {% endfor %}
+</table>
+</div>
+<p class="pager">
+  {% if page > 1 %}<a href="?page={{ page - 1 }}">← Newer</a>{% endif %}
+  {% if has_next %}<a href="?page={{ page + 1 }}">Older →</a>{% endif %}
+</p>
+{% endblock %}

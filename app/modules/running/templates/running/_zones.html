@@ -1,0 +1,7 @@
+{# Stacked HR-zone bar. Expects `zones`: five seconds values. #}
+{% set total = zones | sum %}
+{% if total > 0 %}
+<div class="zonebar" title="{% for z in zones %}Z{{ loop.index }} {{ (100 * z / total) | round | int }}%{% if not loop.last %} · {% endif %}{% endfor %}">
+  {% for z in zones %}{% if z > 0 %}<span class="z{{ loop.index }}" style="flex: {{ z }}"></span>{% endif %}{% endfor %}
+</div>
+{% else %}<span class="muted">–</span>{% endif %}

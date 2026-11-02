@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Plan · Running · Homebase{% endblock %}
+{% block content %}
+{% include "running/_tabs.html" %}
+<p class="pager">
+  <a href="?week={{ prev }}">← Previous</a>
+  <b>Week of {{ monday.strftime("%b %-d, %Y") }}</b>
+  <a href="?week={{ next }}">Next →</a>
+  {% if monday != this_monday %}<a href="?week={{ this_monday }}">This week</a>{% endif %}
+</p>
+
+<section class="stats">
+  <div><span class="muted">Sessions done</span><b>{{ wk.done }} / {{ wk.planned }}</b></div>
+  <div><span class="muted">Run distance{% if wk.planned_m %} / planned{% endif %}</span>
+    <b>{{ f.dist(wk.run_m) }}{% if wk.planned_m %} / {{ f.dist(wk.planned_m) }}{% endif %}</b></div>
+</section>
+
+<div class="scroll">
+<table>
+  <tr>
+    <th>Day</th><th>Planned</th><th class="num">Target</th><th>Actual</th><th class="num">Distance</th>
+    <th class="num">Pace</th><th class="num">Avg HR</th><th>Status</th><th></th>
+  </tr>
+  {% for d in wk.days %}
+  {% set label = d.day.strftime("%a %b %-d") %}
+  {% for s, a, status in d["items"] %}
+  <tr>
+    <td>{% if loop.first %}{% if d.day == today %}<b>{{ label }}</b>{% else %}{{ label }}{% endif %}{% endif %}</td>
+    <td>{% if s %}{{ s.kind }}{% if s.notes %} <span class="muted">· {{ s.notes }}</span>{% endif %}{% endif %}</td>
+    <td class="num">{% if s %}{{ [f.dist(s.distance_m) if s.distance_m, f.duration(s.duration_s) if s.duration_s] | select | join(" · ") }}{% endif %}</td>
+    <td>{% if a %}<a href="https://www.strava.com/activities/{{ a.source_id }}" rel="noopener" target="_blank">{{ a.name }}</a>{% if not a.is_run %} <span class="muted">({{ a.sport }})</span>{% endif %}{% if a.id in spikes %} <span class="badge" title="Longer than your longest run in the prior 30 days">spike +{{ f.num(spikes[a.id]) }}%</span>{% endif %}{% endif %}</td>
+    <td class="num">{{ f.dist(a.distance_m) if a else "" }}</td>
+    <td class="num">{{ f.pace(a.moving_s, a.distance_m) if a and a.is_run else "" }}</td>
+    <td class="num">{{ f.num(a.avg_hr) if a else "" }}</td>
+    <td class="status-{{ status }}">{{ status }}</td>
+    <td class="actions">{% if s %}
+      <a href="?edit={{ s.id }}#session">Edit</a>
+      <form method="post" action="/running/plan/{{ s.id }}/delete"><input type="hidden" name="week" value="{{ monday }}"><button>Delete</button></form>
+    {% endif %}</td>
+  </tr>
+  {% else %}
+  <tr><td>{% if d.day == today %}<b>{{ label }}</b>{% else %}{{ label }}{% endif %}</td><td colspan="8" class="muted">–</td></tr>
+  {% endfor %}
+  {% endfor %}
+</table>
+</div>
+<p class="muted">Sessions match activities on the same day: run types match runs, "cross" matches other activities.</p>
+
+{% if not wk.sessions %}
+<form method="post" action="/running/plan/copy">
+  <input type="hidden" name="week" value="{{ monday }}">
+  <button>Copy last week's plan</button>
+</form>
+{% endif %}
+
+<h2 id="session">{{ "Edit session" if edit_id else "Add session" }}</h2>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form class="form" method="post" action="/running/plan">
+  <input type="hidden" name="week" value="{{ monday }}">
+  {% if edit_id %}<input type="hidden" name="session_id" value="{{ edit_id }}">{% endif %}
+  <label>Day
+    <select name="day">
+      {% for d in wk.days %}<option value="{{ d.day }}"{% if form.day == d.day | string %} selected{% endif %}>{{ d.day.strftime("%a %b %-d") }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Type
+    <select name="kind">
+      {% for k in kinds %}<option{% if form.kind == k %} selected{% endif %}>{{ k }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Distance ({{ f.units }}, optional) <input type="number" name="distance" value="{{ form.distance }}" step="0.1" min="0.1" max="200"></label>
+  <label>Duration (minutes, optional) <input type="number" name="minutes" value="{{ form.minutes }}" min="1" max="1440"></label>
+  <label>Notes <input name="notes" value="{{ form.notes }}" maxlength="200" placeholder="e.g. 6 × 800 m at 5K pace"></label>
+  <div class="row">
+    <button>Save</button>
+    {% if edit_id %}<a class="button" href="?week={{ monday }}">Cancel</a>{% endif %}
+  </div>
+</form>
+{% endblock %}

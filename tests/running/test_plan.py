@@ -1,0 +1,113 @@
+from datetime import date, timedelta
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import create_app
+from app.modules.running import Running, plan, storage
+from app.modules.running.config import AthleteSettings
+from app.modules.running.sources.base import Activity
+from tests.conftest import PASSWORD
+
+MON = date(2026, 10, 26)
+
+
+def add_activity(conn, i: int, start_local: str, sport: str = "Run", meters: float = 8000) -> None:
+    moving = round(meters * 0.3)  # 5:00/km
+    a = Activity("strava", str(i), sport, f"Act {i}", 0, start_local, moving, moving + 100, meters,
+                 0, 140.0, 160.0, False)  # fmt: skip
+    storage.upsert_activity(conn, a, fetch_streams=False)
+
+
+def add(conn, day: date, kind: str, km: float | None = None) -> None:
+    plan.save(conn, plan.Session(day=day, kind=kind, distance_m=km and km * 1000))
+
+
+def statuses(wk: dict) -> list[tuple]:
+    return [
+        (d["day"].weekday(), s["kind"] if s else None, a["name"] if a else None, st)
+        for d in wk["days"]
+        for s, a, st in d["items"]
+    ]
+
+
+def test_week_matches_same_day_and_totals(running_conn):
+    c = running_conn
+    add(c, MON, "easy", 8)
+    add(c, MON, "intervals", 5)  # second session on Monday: no second run, so missed
+    add(c, MON + timedelta(days=1), "rest")
+    add(c, MON + timedelta(days=2), "cross")
+    add(c, MON + timedelta(days=3), "long", 20)  # today, not run yet
+    add(c, MON + timedelta(days=5), "tempo", 10)  # future
+    add_activity(c, 1, "2026-10-26T07:00:00")
+    add_activity(c, 2, "2026-10-27T07:00:00")  # ran on a rest day
+    add_activity(c, 3, "2026-10-28T18:00:00", sport="Ride", meters=30000)
+    add_activity(c, 4, "2026-10-28T07:00:00")  # unplanned run on the cross day
+    add_activity(c, 5, "2026-11-02T07:00:00")  # next week
+
+    wk = plan.week(c, MON, today=MON + timedelta(days=3))
+    assert statuses(wk) == [
+        (0, "easy", "Act 1", "done"),
+        (0, "intervals", None, "missed"),
+        (1, "rest", None, "rest"),
+        (1, None, "Act 2", "unplanned"),
+        (2, "cross", "Act 3", "done"),
+        (2, None, "Act 4", "unplanned"),
+        (3, "long", None, "today"),
+        (5, "tempo", None, "planned"),
+    ]
+    assert (wk["sessions"], wk["planned"], wk["done"]) == (6, 5, 2)
+    assert wk["planned_m"] == 43_000 and wk["run_m"] == 24_000  # rides excluded
+
+
+def test_copy_week_shifts_days(running_conn):
+    add(running_conn, MON, "easy", 8)
+    add(running_conn, MON + timedelta(days=6), "long", 18)
+    assert plan.copy_week(running_conn, MON, MON + timedelta(weeks=1)) == 2
+    days = [r[0] for r in running_conn.execute("SELECT day FROM running_plan ORDER BY day")]
+    assert days == ["2026-10-26", "2026-11-01", "2026-11-02", "2026-11-08"]
+
+
+@pytest.mark.parametrize(
+    "bad", [{"kind": "swim"}, {"distance_m": -1}, {"duration_s": 0}, {"notes": "x" * 201}]
+)
+def test_session_validation(bad):
+    with pytest.raises(ValueError):
+        plan.Session(**{"day": MON, "kind": "easy", **bad})
+
+
+@pytest.fixture
+def client(settings, running_conn):
+    with TestClient(create_app(settings, [Running()])) as c:
+        c.post("/login", data={"password": PASSWORD})
+        yield c
+
+
+def test_plan_pages(client, running_conn):
+    storage.kv_set(running_conn, "athlete", AthleteSettings(units="mi"))
+    running_conn.commit()
+    assert client.get("/running/plan").status_code == 200
+    assert client.get("/running/plan?week=garbage").status_code == 200
+
+    form = {"week": "2026-10-28", "day": "2026-10-29", "kind": "long", "distance": "10"}
+    r = client.post("/running/plan", data=form, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/running/plan?week=2026-10-26"
+    row = running_conn.execute("SELECT * FROM running_plan").fetchone()
+    assert row["distance_m"] == pytest.approx(16093.44)
+
+    page = client.get(f"/running/plan?edit={row['id']}").text
+    assert 'value="10.0"' in page and "Edit session" in page
+    edit = {**form, "session_id": str(row["id"]), "minutes": "95", "distance": ""}
+    client.post("/running/plan", data=edit)
+    row = running_conn.execute("SELECT * FROM running_plan").fetchone()
+    assert row["distance_m"] is None and row["duration_s"] == 5700
+
+    r = client.post("/running/plan", data={**form, "distance": "-3"})
+    assert r.status_code == 400 and "greater than 0" in r.text
+
+    for _ in range(2):  # second copy is a no-op: target week no longer empty
+        client.post("/running/plan/copy", data={"week": "2026-11-02"})
+    assert running_conn.execute("SELECT count(*) FROM running_plan").fetchone()[0] == 2
+
+    client.post(f"/running/plan/{row['id']}/delete", data={"week": "2026-10-26"})
+    assert running_conn.execute("SELECT count(*) FROM running_plan").fetchone()[0] == 1

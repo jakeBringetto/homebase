@@ -1,0 +1,4 @@
+{# Chart placeholder rendered by app.js from a JSON endpoint returning {"data": [...], "opts": {...}}. #}
+{% macro chart(src, height=300) -%}
+<div class="chart" data-chart="{{ src }}" data-height="{{ height }}"></div>
+{%- endmacro %}

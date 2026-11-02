@@ -1,0 +1,6 @@
+{% set tabs = [("/recovery/", "Overview"), ("/recovery/sync", "Sync")] %}
+<div class="tabs">
+  {% for href, label in tabs %}
+  <a href="{{ href }}"{% if request.url.path == href %} aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</div>

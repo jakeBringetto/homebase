@@ -1,0 +1,11 @@
+services:
+  homebase:
+    build: .
+    image: homebase:${HOMEBASE_VERSION:-dev}
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    mem_limit: 256m

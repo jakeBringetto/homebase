@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "macros.html" import chart %}
+{% block title %}Recovery · Homebase{% endblock %}
+{% block content %}
+{% include "recovery/_tabs.html" %}
+{% set q = "?range=" ~ rng %}
+
+<p class="ranges">
+  {% for key, (label, _) in ranges.items() %}<a href="?range={{ key }}"{% if key == rng %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</p>
+
+{% if not has_data %}
+<p>No Garmin data yet. {% if configured %}The first sync backfills the last year; check <a href="/recovery/sync">Sync</a>.{% else %}Set <code>GARMIN_API_KEY</code> in .env and restart.{% endif %}</p>
+{% else %}
+{% set n, rhr, slp = latest.night, latest.rhr, latest.sleep %}
+<section class="stats">
+  {% if n %}<div><span class="muted">HRV · {{ n.day.strftime("%b %-d") }}</span><b>{{ "%.0f" | format(n.hrv) }} ms</b></div>
+  {% if n.low is not none %}<div><span class="muted">Normal range</span><b>{{ "%.0f" | format(n.low) }}–{{ "%.0f" | format(n.high) }} ms</b></div>{% endif %}{% endif %}
+  {% if rhr %}<div><span class="muted">Resting HR · 7-day</span><b>{{ "%.0f" | format(rhr[1]) }} · {{ "%.0f" | format(rhr[2]) }} bpm</b></div>{% endif %}
+  {% if slp %}<div><span class="muted">Sleep · {{ slp.day }}</span><b>{{ "%.1f" | format(slp.sleep_s / 3600) }} h{% if slp.score is not none %} · {{ slp.score }}{% endif %}</b></div>{% endif %}
+</section>
+<p class="muted">Since {{ start.strftime("%b %-d, %Y") }}.</p>
+
+<h2>Overnight HRV</h2>
+<p class="muted">Average overnight HRV (RMSSD, ms) per night, with the 7-day average and your normal range. A 7-day average below the range, or a sudden drop, often follows hard training, illness, poor sleep or alcohol. Read the trend, not single nights (Plews et al. 2013).{% if fallback_band %} Where Garmin has no baseline yet (it needs about 19 nights), the range is your 60-day mean ± 1 SD.{% endif %}</p>
+{{ chart("/recovery/charts/hrv.json" ~ q, 260) }}
+
+<h3>Night-to-night variation</h3>
+<p class="muted">Coefficient of variation of ln HRV over the last 7 nights (needs 4). Studies of endurance athletes (Plews et al. 2012, 2013) found it adds to the 7-day average: a steady or rising average with low variation went with good adaptation, while a falling average with rising variation went with poor adaptation or illness. Compare it with your own usual level, not other people's.</p>
+{% if cv_now is not none %}
+<p>Last 7 nights: <b>{{ "%.1f" | format(cv_now) }}%</b> · your median in this range {{ "%.1f" | format(cv_median) }}%</p>
+{% endif %}
+{{ chart("/recovery/charts/hrv-cv.json" ~ q, 180) }}
+
+<h2>Resting heart rate</h2>
+<p class="muted">Garmin's resting HR on days the watch was actually worn (the night has sleep data, or the day has stress and Body Battery readings). A rise of several bpm over your norm can mean fatigue or illness.</p>
+{{ chart("/recovery/charts/rhr.json" ~ q, 220) }}
+
+<h2>Sleep</h2>
+{{ chart("/recovery/charts/sleep.json" ~ q, 200) }}
+
+<h2>Next-morning response</h2>
+<p class="muted">Each morning's HRV and resting HR against the previous day's running load (TRIMP, from Running).{% if response.hard_cut %} Hard means a day at or above {{ "%.0f" | format(response.hard_cut) }} TRIMP, your top quarter of training days.{% endif %}</p>
+{% if response.points %}
+{{ chart("/recovery/charts/response.json" ~ q, 240) }}
+<table class="narrow">
+  <tr><th>Previous day</th><th class="num">Nights</th><th class="num">Avg HRV (ms)</th><th class="num">Avg RHR (bpm)</th></tr>
+  {% for b in response.buckets %}
+  <tr><td>{{ b.label }}</td><td class="num">{{ b.nights }}</td>
+    <td class="num">{{ b.hrv if b.hrv is not none else "–" }}</td><td class="num">{{ b.rhr if b.rhr is not none else "–" }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No nights in this range have both recovery data and running load.</p>
+{% endif %}
+
+<h2>Morning readiness and that day's run</h2>
+<p class="muted">Does a low-HRV or poor-sleep morning make that day's run harder? Each run's average HR is compared with the HR expected at its pace, from a line fit on your runs in the {{ expect_days }} days before it. Positive means harder than usual for that pace. Hills, heat and workout type add noise, so treat a group with fewer than about 10 runs as a hint, not a finding.</p>
+{% set rd = readiness %}
+{% if rd.points %}
+{{ chart("/recovery/charts/readiness.json" ~ q, 240) }}
+<div class="scroll">
+<table class="narrow">
+  <tr><th>Morning</th><th class="num">Runs</th><th class="num">HR vs expected (bpm)</th></tr>
+  <tr><th colspan="3">HRV</th></tr>
+  {% for b in rd.by_hrv %}
+  <tr><td>{{ b.label }}</td><td class="num">{{ b.runs }}</td><td class="num">{{ "%+.1f" | format(b.delta) if b.delta is not none else "–" }}</td></tr>
+  {% endfor %}
+  <tr><th colspan="3">Sleep score</th></tr>
+  {% for b in rd.by_sleep %}
+  <tr><td>{{ b.label }}</td><td class="num">{{ b.runs }}</td><td class="num">{{ "%+.1f" | format(b.delta) if b.delta is not none else "–" }}</td></tr>
+  {% endfor %}
+</table>
+</div>
+{% else %}
+<p class="muted">No runs in this range with both a morning reading and enough earlier runs (10 in {{ expect_days }} days) to compare against.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

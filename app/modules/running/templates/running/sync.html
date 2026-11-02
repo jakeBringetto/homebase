@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Sync · Running · Homebase{% endblock %}
+{% block content %}
+{% include "running/_tabs.html" %}
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+<h2>Strava</h2>
+{% if not configured %}
+<p class="error">Set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET in .env and restart.</p>
+{% elif token %}
+<p>Connected{% if token.athlete_id %} (athlete {{ token.athlete_id }}){% endif %}.</p>
+<div class="row">
+  <form method="post" action="/running/sync"><button>Sync now</button></form>
+  <form method="post" action="/running/strava/disconnect"><button>Disconnect</button></form>
+</div>
+{% else %}
+<p><a class="button" href="/running/strava/connect">Connect Strava</a></p>
+<p class="muted">Open this page at <code>http://localhost:…</code> to connect: the Strava app's callback domain is <code>localhost</code>.</p>
+{% endif %}
+
+<h2>Status</h2>
+<table class="narrow">
+  <tr><td>Last sync</td><td>{{ state.last_sync | int | timestamp if state.last_sync else "never" }}</td></tr>
+  <tr><td>History backfill</td><td>{{ "complete" if state.backfill_done else "in progress" }}</td></tr>
+  <tr><td>Activities</td><td class="num">{{ counts.total }}</td></tr>
+  {% for status in ["stored", "queued", "unavailable"] %}
+  <tr><td>Streams {{ status }}</td><td class="num">{{ counts.streams.get(status, 0) }}</td></tr>
+  {% endfor %}
+  {% for status in ["pending", "running", "failed"] %}
+  <tr><td>Jobs {{ status }}</td><td class="num">{{ counts.jobs.get(status, 0) }}</td></tr>
+  {% endfor %}
+</table>
+<p class="muted">History is synced as summaries only. Second-by-second streams (HR, pace) are fetched once for each new run.</p>
+{% if token and history_missing %}
+<form method="post" action="/running/sync/history">
+  <button>Fetch streams for {{ history_missing }} older runs</button>
+  <span class="muted">One-time; Strava doesn't count these requests. Adds best efforts, cadence and GAP for those runs.</span>
+</form>
+{% endif %}
+
+<h2>API budget</h2>
+<table class="narrow">
+  <tr><th>Window</th><th class="num">Used</th><th class="num">Limit</th><th>Resets</th></tr>
+  {% for r in limits %}
+  <tr>
+    <td>{{ "15 min" if r.window_s == 900 else "Day (UTC)" }}</td>
+    <td class="num">{{ r.used }}</td><td class="num">{{ r.max_calls }}</td>
+    <td>{{ r.resets_at | int | timestamp }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+{% if failed %}
+<h2>Recent failures</h2>
+<table>
+  {% for j in failed %}<tr><td>{{ j.kind }}</td><td>{{ j.last_error }}</td></tr>{% endfor %}
+</table>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Sync · Recovery · Homebase{% endblock %}
+{% block content %}
+{% include "recovery/_tabs.html" %}
+
+<h2>Garmin</h2>
+{% if not configured %}
+<p class="error">Set GARMIN_API_KEY in .env and restart. Create the key at connect.garmin.com → Settings → Personal API.</p>
+{% elif auth.invalid %}
+<p class="error">Key rejected: {{ auth.invalid }}. Create a new key, update GARMIN_API_KEY in .env, and restart.</p>
+{% else %}
+<p>Key set.{% if auth.exp > now %} Token valid until {{ auth.exp | int | timestamp }}.{% endif %}</p>
+<form method="post" action="/recovery/sync"><button>Sync now</button></form>
+{% endif %}
+
+<h2>Status</h2>
+<table class="narrow">
+  <tr><td>Last full sync</td><td>{{ state.last_full_sync | int | timestamp if state.last_full_sync else "never" }}</td></tr>
+  {% for kind, label in [("daily", "Daily summaries"), ("hrv", "HRV nights"), ("sleep", "Sleep nights")] %}
+  {% set c = counts[kind] %}
+  <tr><td>{{ label }}</td><td class="num">{{ c[0] }}{% if c[0] %} <span class="muted">({{ c[1] }} → {{ c[2] }})</span>{% endif %}</td></tr>
+  {% endfor %}
+</table>
+<p class="muted">Garmin may keep only the last year, so the first sync fetches all of it (about 15 calls). After that, each sync re-fetches the last few days, since data arrives whenever the watch syncs. Syncs run every 3 hours and skip once last night is in.</p>
+
+<h2>API budget</h2>
+<p class="muted">Garmin publishes no limits; these are our own.</p>
+<table class="narrow">
+  <tr><th>Window</th><th class="num">Used</th><th class="num">Limit</th><th>Resets</th></tr>
+  {% for r in limits %}
+  <tr>
+    <td>{{ {60: "1 min", 900: "15 min", 86400: "Day (UTC)"}[r.window_s] }}</td>
+    <td class="num">{{ r.used }}</td><td class="num">{{ r.max_calls }}</td>
+    <td>{{ r.resets_at | int | timestamp }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+{% if failed %}
+<h2>Recent failures</h2>
+<table>
+  {% for j in failed %}<tr><td>{{ j.kind }}</td><td>{{ j.last_error }}</td></tr>{% endfor %}
+</table>
+{% endif %}
+{% endblock %}

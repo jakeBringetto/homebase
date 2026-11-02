@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% from "macros.html" import chart %}
+{% block title %}Performance · Running · Homebase{% endblock %}
+{% block content %}
+{% include "running/_tabs.html" %}
+{% set q = "?range=" ~ rng.key %}
+{% set chart_unit = {"week": "week", "month": "month"}[rng.chart] %}
+{% include "running/_ranges.html" %}
+
+<h2>Race estimate</h2>
+<p class="muted">Your fastest mile-or-longer effort in the {{ estimate_days }} days before each {{ chart_unit }}'s end, converted to a 5 km time with Riegel's formula (t₂ = t₁ × (d₂/d₁)^1.06). Lower is fitter. Efforts come from training runs, so this is what you've shown, not a race prediction at full effort; the half marathon is the least reliable unless you've run long recently.</p>
+{% if predictions %}
+{% set src = predictions.source %}
+<section class="stats">
+  {% for label, d, secs in predictions.times %}
+  <div><span class="muted">{{ label }} now</span><b>{{ f.duration(secs) }} · {{ f.pace(secs, d) }}</b></div>
+  {% endfor %}
+</section>
+<p class="muted">From your {{ predictions.source_label }} in {{ f.duration(src.seconds) }} on <a href="https://www.strava.com/activities/{{ src.source_id }}" rel="noopener" target="_blank">{{ src.day.strftime("%b %-d, %Y") }}</a>.</p>
+{{ chart("/running/charts/race-estimate.json" ~ q, 220) }}
+{% else %}
+<p class="muted">No mile-or-longer efforts with second-by-second data in the last {{ estimate_days }} days.</p>
+{% endif %}
+
+<h2>Best efforts</h2>
+<p class="muted">Fastest stretch of each distance within a run, from second-by-second data, so only runs synced with streams count.</p>
+{% if best %}
+<div class="scroll">
+<table class="narrow">
+  <tr>
+    <th>Distance</th>
+    {% if rng.key != "all" %}<th class="num">{{ rng.label }}</th><th class="num">Pace</th><th>Date</th>{% endif %}
+    <th class="num">All time</th><th class="num">Pace</th><th>Date</th>
+  </tr>
+  {% for b in best %}
+  <tr>
+    <td>{{ b.label }}</td>
+    {% for r in ([b.range] if rng.key != "all" else []) + [b.all] %}
+    {% if r %}
+    <td class="num">{{ f.duration(r.seconds) }}</td>
+    <td class="num">{{ f.pace(r.seconds, b.distance_m) }}</td>
+    <td><a href="https://www.strava.com/activities/{{ r.source_id }}" rel="noopener" target="_blank">{{ f.day(r.start_local) }}</a></td>
+    {% else %}<td class="num">–</td><td></td><td></td>{% endif %}
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+</div>
+{% else %}
+<p class="muted">No runs with second-by-second data yet.</p>
+{% endif %}
+
+<h2>Heart rate at pace</h2>
+<p class="muted">Average HR during steady, flat running (after a 10-minute warm-up) for your most-run pace bands, per {{ rng.hr }}. Lower HR at the same pace means better aerobic fitness.</p>
+{% if bands %}
+{{ chart("/running/charts/hr-pace.json" ~ q, 280) }}
+<details>
+  <summary>Table</summary>
+  <div class="scroll">
+  <table>
+    <tr><th>{{ rng.hr | capitalize }}</th>{% for b in bands %}<th class="num">{{ b }}</th>{% endfor %}</tr>
+    {% for d, values in hr_table %}
+    <tr><td>{{ f.period(d, rng.hr) }}</td>{% for v in values %}<td class="num">{{ f.num(v) }}</td>{% endfor %}</tr>
+    {% endfor %}
+  </table>
+  </div>
+</details>
+{% else %}
+<p class="muted">Not enough steady-state data in this range.</p>
+{% endif %}
+
+<h3>Each run: average HR vs pace</h3>
+<p class="muted">Whole-run averages, so hills and warm-ups are included. For the same pace, points lower than earlier runs mean a lower heart rate.</p>
+{{ chart("/running/charts/hr-pace-runs.json" ~ q, 280) }}
+
+<h2>Aerobic efficiency</h2>
+<p class="muted">Efficiency factor: average speed (m/min) per heartbeat. The line is the average per {{ chart_unit }}, weighted by run time; dots are single runs. Rising is better.</p>
+{{ chart("/running/charts/efficiency.json" ~ q, 220) }}
+
+<h2>Cadence</h2>
+<p class="muted">Steps per minute while moving. The line is the average per {{ chart_unit }}, weighted by run time; dots are single runs. Cadence rises with pace, so compare runs at similar paces (the pace profile below breaks it down by pace). A higher step rate at the same pace means a shorter stride, which lowers hip and knee loading (Heiderscheit et al. 2011).</p>
+{{ chart("/running/charts/cadence.json" ~ q, 220) }}
+
+<h2>Pace profile</h2>
+<p class="muted">Steady minutes in this range by pace band, with average HR and cadence. Cadence usually rises with pace; a low cadence at easy pace can mean overstriding.</p>
+{% if profile %}
+<div class="scroll">
+<table class="narrow">
+  <tr><th>Pace</th><th class="num">Steady min</th><th class="num">Avg HR</th><th class="num">Cadence (spm)</th></tr>
+  {% for p in profile %}
+  <tr><td>{{ f.band(p.band, band_width) }}</td><td class="num">{{ f.num(p.secs / 60) }}</td><td class="num">{{ f.num(p.hr) }}</td><td class="num">{{ f.num(p.cadence) }}</td></tr>
+  {% endfor %}
+</table>
+</div>
+{% else %}
+<p class="muted">Not enough steady-state data in this range.</p>
+{% endif %}
+{% endblock %}

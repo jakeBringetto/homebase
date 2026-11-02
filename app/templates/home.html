@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+{% if tiles %}
+<div class="tiles">
+  {% for m, tile in tiles %}
+  <a class="tile{% if tile.error %} error{% endif %}" href="/{{ m.slug }}">
+    <h2>{{ m.title }}</h2>
+    {% for line in tile.lines %}<p>{{ line }}</p>{% endfor %}
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<p class="muted">No modules registered yet.</p>
+{% endif %}
+{% endblock %}

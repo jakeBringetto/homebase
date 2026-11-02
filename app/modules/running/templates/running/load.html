@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% from "macros.html" import chart %}
+{% block title %}Load · Running · Homebase{% endblock %}
+{% block content %}
+{% include "running/_tabs.html" %}
+{% set q = "?range=" ~ rng.key %}
+{% set chart_unit = {"week": "week", "month": "month"}[rng.chart] %}
+{% include "running/_ranges.html" %}
+
+<section class="stats">
+  {% if load_now %}
+  <div><span class="muted">Fitness · Fatigue · Form today</span><b>{{ f.num(load_now[1]) }} · {{ f.num(load_now[2]) }} · {{ f.num(load_now[3]) }}</b></div>
+  {% endif %}
+  {% if mono_7d is not none %}
+  <div><span class="muted">Monotony, last 7 days</span><b>{{ f.num(mono_7d, 1) }}</b></div>
+  {% endif %}
+  <div><span class="muted">Spikes in range</span><b>{{ spikes | length }}</b></div>
+</section>
+<p class="muted">Since {{ start.strftime("%b %-d, %Y") }}. Load is TRIMP from heart rate, so runs without HR add nothing and other exercise isn't counted.</p>
+
+<h2>Long-run spikes</h2>
+<p class="muted">A run more than 10% longer than your longest run in the previous 30 days. In a 5,200-runner study (Frandsen et al., BJSM 2025) such single-run spikes raised injury risk more than gradual weekly increases did. Points above the line are spikes; the line drops when a long run is more than 30 days old.</p>
+{{ chart("/running/charts/spikes.json" ~ q, 220) }}
+{% if spikes %}
+<details>
+  <summary>{{ spikes | length }} spike{{ "s" if spikes | length != 1 }} in this range</summary>
+  <div class="scroll">
+  <table class="narrow">
+    <tr><th>Date</th><th>Run</th><th class="num">Distance</th><th class="num">30-day longest before</th><th class="num">Over</th></tr>
+    {% for s in spikes %}
+    <tr>
+      <td>{{ f.day(s.start_local) }}</td>
+      <td><a href="https://www.strava.com/activities/{{ s.source_id }}" rel="noopener" target="_blank">{{ s.name }}</a></td>
+      <td class="num">{{ f.dist(s.distance_m) }}</td><td class="num">{{ f.dist(s.prior_max) }}</td>
+      <td class="num">+{{ f.num(s.pct) }}%</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</details>
+{% else %}
+<p class="muted">No spikes in this range.</p>
+{% endif %}
+
+<h2>Fitness, fatigue and form</h2>
+<p class="muted">Fitness (CTL) is your 42-day average daily load; fatigue (ATL) is the 7-day average; form (TSB) is fitness minus fatigue as of yesterday. Negative form means you're carrying fatigue.</p>
+{% if load_table %}
+{{ chart("/running/charts/fitness.json" ~ q, 260) }}
+<details>
+  <summary>Table (weekly samples)</summary>
+  <div class="scroll">
+  <table class="narrow">
+    <tr><th>Day</th><th class="num">Fitness</th><th class="num">Fatigue</th><th class="num">Form</th></tr>
+    {% for day, ctl, atl, tsb in load_table %}
+    <tr><td>{{ day.strftime("%b %-d, %Y") }}</td><td class="num">{{ f.num(ctl) }}</td><td class="num">{{ f.num(atl) }}</td><td class="num">{{ f.num(tsb) }}</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+</details>
+{% else %}
+<p class="muted">No runs with heart rate yet.</p>
+{% endif %}
+
+<h2>Monotony and strain</h2>
+<p class="muted">Monotony is a week's average daily load divided by its standard deviation, rest days included: high means every day looks alike, with no real easy or rest days. Strain is the week's load times its monotony. Foster (1998) found illness followed weeks of high strain, and flagged monotony above {{ mono_high | round(1) }}. Complete Monday–Sunday weeks only.</p>
+{% if weeks %}
+{{ chart("/running/charts/monotony.json" ~ q, 200) }}
+<details>
+  <summary>Table (last {{ weeks | length }} weeks)</summary>
+  <div class="scroll">
+  <table class="narrow">
+    <tr><th>Week</th><th class="num">Load (TRIMP)</th><th class="num">Monotony</th><th class="num">Strain</th></tr>
+    {% for w in weeks %}
+    <tr><td>{{ f.period(w.start, "week") }}</td><td class="num">{{ f.num(w.load) }}</td>
+      <td class="num">{{ f.num(w.monotony, 2) if w.monotony is not none else "–" }}</td>
+      <td class="num">{{ f.num(w.strain) if w.strain is not none else "–" }}</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+</details>
+{% else %}
+<p class="muted">No complete weeks with heart-rate data in this range.</p>
+{% endif %}
+
+<h2>Easy/hard balance</h2>
+<p class="muted">Share of heart-rate time per {{ chart_unit }} at low (Z1–2), moderate (Z3) and high (Z4–5) intensity. Research on endurance athletes (Seiler; Stöggl &amp; Sperlich 2014) finds most successful training is about 75–80% low. Zones here come from % of max HR, so the split is approximate.</p>
+{% if totals.intensity %}
+<p>This range: <b>{{ f.num(totals.intensity[0]) }}% low</b> · {{ f.num(totals.intensity[1]) }}% moderate · {{ f.num(totals.intensity[2]) }}% high</p>
+{{ chart("/running/charts/intensity.json" ~ q, 220) }}
+{% else %}
+<p class="muted">No heart-rate data in this range.</p>
+{% endif %}
+{% endblock %}

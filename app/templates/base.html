@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Homebase{% endblock %}</title>
+  <link rel="stylesheet" href="/static/vendor/uPlot.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/vendor/htmx.min.js" defer></script>
+  <script src="/static/vendor/uPlot.iife.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  {% if not auth_enabled or request.session.get("auth") %}
+  <nav>
+    <a href="/"><b>Homebase</b></a>
+    {% for slug, title in nav %}<a href="/{{ slug }}">{{ title }}</a>{% endfor %}
+    {% if auth_enabled %}<form method="post" action="/logout"><button>Log out</button></form>{% endif %}
+  </nav>
+  {% endif %}
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>

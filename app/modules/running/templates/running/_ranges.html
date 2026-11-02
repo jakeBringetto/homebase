@@ -1,0 +1,3 @@
+<p class="ranges">
+  {% for r in ranges %}<a href="?range={{ r.key }}"{% if r.key == rng.key %} aria-current="page"{% endif %}>{{ r.label }}</a>{% endfor %}
+</p>

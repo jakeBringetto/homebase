@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Log in · Homebase{% endblock %}
+{% block content %}
+<form class="login" method="post" action="/login">
+  <h1>Homebase</h1>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <label>Password <input type="password" name="password" autofocus required></label>
+  <input type="hidden" name="next" value="{{ next }}">
+  <button>Log in</button>
+</form>
+{% endblock %}

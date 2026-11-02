@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "macros.html" import chart %}
+{% block title %}Running · Homebase{% endblock %}
+{% block content %}
+{% include "running/_tabs.html" %}
+{% set q = "?range=" ~ rng.key %}
+{% set chart_unit = {"week": "week", "month": "month"}[rng.chart] %}
+{% set table_title = {"week": "Weeks", "month": "Months", "year": "Years"}[rng.table] %}
+{% include "running/_ranges.html" %}
+
+{% if not connected and not totals.runs %}
+<p>No runs yet. <a href="/running/sync">Connect Strava</a> to start syncing.</p>
+{% endif %}
+
+<section class="stats">
+  <div><span class="muted">Runs</span><b>{{ totals.runs }}</b></div>
+  <div><span class="muted">Distance</span><b>{{ f.dist(totals.distance_m) }}</b></div>
+  <div><span class="muted">Time</span><b>{{ f.duration(totals.moving_s) }}</b></div>
+  <div><span class="muted">Avg pace</span><b>{{ f.pace(totals.moving_s, totals.distance_m) }}</b></div>
+  <div><span class="muted">Longest</span><b>{{ f.dist(totals.longest_m) }}</b></div>
+</section>
+<p class="muted">Since {{ start.strftime("%b %-d, %Y") }}. Training load and injury risk are on <a href="/running/load{{ q }}">Load</a>; aerobic fitness and race estimates on <a href="/running/performance{{ q }}">Performance</a>.</p>
+
+<h2>Distance per {{ chart_unit }}</h2>
+{{ chart("/running/charts/distance.json" ~ q, 220) }}
+
+<h2>Consistency</h2>
+{% set years, cuts = calendar %}
+<p class="muted legend">Run distance per day. Less
+  {% for lvl in range(5) %}<i class="cal-{{ lvl }}"></i>{% endfor %} More
+  {% if cuts %}({% for c in cuts %}{{ f.dist(c) }}{{ ", " if not loop.last }}{% endfor %} are the quartile edges){% endif %}</p>
+{% for y in years %}
+<div class="cal-year">
+  <span class="muted">{{ y.year }}</span>
+  <div class="scroll"><div class="cal">
+    {% for week in y.weeks %}{% for c in week %}{% if c %}<i class="cal-{{ c.level }}" title="{{ c.day.strftime('%a %b %-d, %Y') }}: {{ f.dist(c.m) if c.m else 'rest' }}"></i>{% else %}<i></i>{% endif %}{% endfor %}{% endfor %}
+  </div></div>
+</div>
+{% endfor %}
+
+<h2>{{ table_title }}</h2>
+<div class="scroll">
+<table>
+  <tr>
+    <th>{{ table_title[:-1] }}</th><th class="num">Runs</th><th class="num">Distance</th><th class="num">Time</th>
+    <th class="num">Pace</th><th class="num">Longest</th><th class="num">TRIMP</th><th class="num">EF</th>
+    <th>HR zones <span class="legend">{% for z in range(1, 6) %}<i class="z{{ z }}"></i>Z{{ z }} {% endfor %}</span></th>
+  </tr>
+  {% for p in periods %}
+  <tr>
+    <td>{{ f.period(p.start, rng.table) }}</td>
+    <td class="num">{{ p.runs }}</td>
+    <td class="num">{{ f.dist(p.distance_m) }}</td>
+    <td class="num">{{ f.duration(p.moving_s) }}</td>
+    <td class="num">{{ f.pace(p.moving_s, p.distance_m) }}</td>
+    <td class="num">{{ f.dist(p.longest_m) }}</td>
+    <td class="num">{{ f.num(p.trimp) }}</td>
+    <td class="num">{{ f.num(p.ef, 2) }}</td>
+    <td>{% with zones = p.zones %}{% include "running/_zones.html" %}{% endwith %}</td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+{% endblock %}

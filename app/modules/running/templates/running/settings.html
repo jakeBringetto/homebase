@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Settings · Running · Homebase{% endblock %}
+{% block content %}
+{% include "running/_tabs.html" %}
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if saved %}<p>Saved. Metrics recompute in the background if HR values changed.</p>{% endif %}
+<form class="form" method="post" action="/running/settings">
+  <label>Max HR (bpm) <input type="number" name="max_hr" value="{{ athlete.max_hr }}" min="120" max="230" required></label>
+  <label>Resting HR (bpm) <input type="number" name="resting_hr" value="{{ athlete.resting_hr }}" min="30" max="100" required></label>
+  <label>Zone bounds (bpm, optional)
+    <input name="zone_bounds" value="{{ athlete.zone_bounds | join(', ') if athlete.zone_bounds else '' }}" placeholder="{{ athlete.zones() | join(', ') }}">
+    <span class="muted">Lower bounds of Z2–Z5, comma-separated. Blank uses 60/70/80/90% of max: {{ athlete.zones() | join(", ") }}.</span>
+  </label>
+  <label>Units
+    <select name="units">
+      {% for u in ["km", "mi"] %}<option value="{{ u }}"{% if athlete.units == u %} selected{% endif %}>{{ u }}</option>{% endfor %}
+    </select>
+  </label>
+  <button>Save</button>
+</form>
+{% endblock %}
