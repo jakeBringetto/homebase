@@ -17,7 +17,7 @@ browser ──HTTP──> FastAPI (Jinja + htmx pages, small JSON endpoints for 
                   SQLite file (/data/homebase.db, WAL)
 ```
 
-- **Module contract** (`app/core/module.py`, ABC): `slug`, `title`, `router`, `migrations_dir`, `jobs()` (recurring jobs to schedule), `tile()` (homepage summary). Modules register in `app/main.py`.
+- **Module contract** (`app/core/module.py`, ABC): `slug`, `title`, `router`, `migrations_dir`, `jobs()` (recurring jobs to schedule), `tile()` (homepage summary), `syncs()` (last successful sync per external source). Modules register in `app/main.py`.
 - **Job worker**: an asyncio loop in the app process. Jobs are rows in a `jobs` table (`kind`, `payload`, `run_after`, `attempts`, `status`). Crash-safe: on startup, `running` jobs reset to `pending`. Retries use backoff. Recurring jobs are re-enqueued after completion.
 - **Rate limiter** (`app/core/ratelimit.py`): per-provider budgets persisted in the DB and updated from response headers. Jobs that would exceed budget are rescheduled, not dropped.
 - **Cache**: `functools.lru_cache` for hot lookups for now (e.g. settings). Always rebuildable from the DB; add a TTL cache only when something needs invalidation.
@@ -45,7 +45,8 @@ browser ──HTTP──> FastAPI (Jinja + htmx pages, small JSON endpoints for 
 - `Dockerfile`: python:3.12-slim, `uv` install, non-root user, `/data` volume.
 - `compose.yaml`: one service, `.env`, `./data:/data`, `restart: unless-stopped`.
 - Laptop and Pi run the same image; the Pi uses 64-bit Raspberry Pi OS.
-- Backup: nightly job runs `VACUUM INTO /data/backups/homebase-YYYYMMDD.db`, keeping the last 7.
+- Backup: nightly job runs `VACUUM INTO /data/backups/homebase-daily-*.db`, keeping the last 7. A `core.restore_check` job then copies the newest backup to a scratch file, runs `PRAGMA integrity_check` and reads every table back.
+- Data integrity page (`/integrity`): last successful sync per source (`Module.syncs()`), last backup, last verified restore, DB size and free disk, failed jobs, and the Garmin key's expiry (entered by hand; the API doesn't report it). The homepage links to it when anything needs attention.
 
 ## Release strategy
 

@@ -85,6 +85,12 @@ def test_worker_runs_maintenance_on_start(client, settings):
         time.sleep(0.1)
     assert statuses == ["done", "pending"]
     assert list(settings.backup_dir.glob("homebase-daily-*.db"))
+    query = "SELECT status FROM jobs WHERE kind = 'core.restore_check'"
+    for _ in range(50):
+        if [r[0] for r in conn.execute(query)] == ["done"]:
+            break
+        time.sleep(0.1)
+    assert [r[0] for r in conn.execute(query)] == ["done"]  # the backup is test-restored
 
 
 def test_rejects_unprefixed_job_kinds(settings):

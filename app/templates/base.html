@@ -15,6 +15,7 @@
   <nav>
     <a href="/"><b>Homebase</b></a>
     {% for slug, title in nav %}<a href="/{{ slug }}">{{ title }}</a>{% endfor %}
+    <a href="/integrity">Integrity</a>
     {% if auth_enabled %}<form method="post" action="/logout"><button>Log out</button></form>{% endif %}
   </nav>
   {% endif %}

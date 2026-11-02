@@ -99,6 +99,7 @@ GARMIN_TRAIL_DAYS = 3  # re-fetch recent days: the watch can sync a run late
 
 class GarminState(BaseModel):
     through: str | None = None  # last local day fetched (YYYY-MM-DD)
+    synced_at: float | None = None
 
 
 def garmin_state(conn: sqlite3.Connection) -> GarminState:
@@ -122,7 +123,7 @@ def run_garmin(conn: sqlite3.Connection, payload: dict) -> None:
             log.warning("garmin form sync stopped: %s", e)
             return
     storage.upsert_garmin(conn, runs)
-    st.through = today.isoformat()
+    st.through, st.synced_at = today.isoformat(), time.time()
     storage.kv_set(conn, GARMIN_KEY, st)
 
 

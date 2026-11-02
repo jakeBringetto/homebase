@@ -1,8 +1,10 @@
 """SQLite connections, migrations, and backups."""
 
 import logging
+import shutil
 import sqlite3
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -71,3 +73,35 @@ def backup(conn: sqlite3.Connection, backup_dir: Path, label: str, keep: int | N
             old.unlink()
     log.info("backup written: %s", dest.name)
     return dest
+
+
+@dataclass(frozen=True)
+class Restored:
+    tables: int
+    rows: int
+    migrations: frozenset[str]
+
+
+def verify_backup(backup: Path, scratch: Path) -> Restored:
+    """Restore a backup to a scratch file and read all of it back; raises if it's damaged."""
+    shutil.copyfile(backup, scratch)
+    try:
+        conn = sqlite3.connect(scratch)
+        try:
+            result = conn.execute("PRAGMA integrity_check").fetchone()[0]
+            if result != "ok":
+                raise sqlite3.DatabaseError(f"integrity check: {result}")
+            tables = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    " AND name NOT LIKE 'sqlite_%'"
+                )
+            ]
+            rows = sum(conn.execute(f'SELECT count(*) FROM "{t}"').fetchone()[0] for t in tables)
+            migrations = frozenset(r[0] for r in conn.execute("SELECT id FROM schema_migrations"))
+        finally:
+            conn.close()
+    finally:
+        scratch.unlink(missing_ok=True)
+    return Restored(len(tables), rows, migrations)

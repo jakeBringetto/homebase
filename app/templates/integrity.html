@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Data integrity · Homebase{% endblock %}
+{% macro status(issue) -%}
+{% if issue %}<span class="error">⚠ {{ issue }}</span>{% else %}<span class="muted">✓ OK</span>{% endif %}
+{%- endmacro %}
+{% macro when(ts) -%}
+{% if ts %}{{ ts | ago }} <span class="muted">({{ ts | int | timestamp }})</span>{% else %}never{% endif %}
+{%- endmacro %}
+{% block content %}
+<h1>Data integrity</h1>
+<p>{% if issues %}<span class="error">{{ issues }} issue{{ "s" if issues != 1 }} need attention.</span>
+{% else %}<span class="muted">Everything looks fine.</span>{% endif %}</p>
+
+<h2>Syncs</h2>
+<div class="scroll"><table>
+  <tr><th>Source</th><th>Last successful sync</th><th>Status</th></tr>
+  {% for s in syncs %}
+  <tr><td>{{ s.name }}</td><td>{{ when(s.last_ok) }}</td><td>{{ status(s.issue) }}</td></tr>
+  {% endfor %}
+</table></div>
+
+<h2>Backups and restores</h2>
+<div class="scroll"><table>
+  <tr><th></th><th>When</th><th>Details</th><th>Status</th></tr>
+  <tr>
+    <td>Last backup</td><td>{{ when(backup.at) }}</td>
+    <td>{% if backup.name %}<code>{{ backup.name }}</code> · {{ backup.count }} kept, {{ backup.size | filesize }} total{% endif %}</td>
+    <td>{{ status(backup.issue) }}</td>
+  </tr>
+  <tr>
+    <td>Last verified restore</td>
+    <td>{{ when(restore.check.at if restore.check and restore.check.ok else None) }}</td>
+    <td>{% if restore.check %}<code>{{ restore.check.backup }}</code> · {{ restore.check.detail }}{% endif %}</td>
+    <td>{{ status(restore.issue) }}</td>
+  </tr>
+</table></div>
+<form method="post" action="/integrity/restore-check" class="row">
+  <button>Verify a restore now</button>
+  <span class="muted">Restores the newest backup to a scratch file and reads every table back. Runs daily after the backup.</span>
+</form>
+
+<h2>Storage</h2>
+<table class="narrow">
+  <tr><td>Database</td><td class="num">{{ storage.db | filesize }}</td></tr>
+  <tr><td>Disk free</td><td class="num">{{ storage.free | filesize }} of {{ storage.total | filesize }}</td></tr>
+  <tr><td>Status</td><td>{{ status(storage.issue) }}</td></tr>
+</table>
+
+<h2>Failed jobs</h2>
+{% if failed %}
+<div class="scroll"><table>
+  <tr><th>Job</th><th>When</th><th class="num">Attempts</th><th>Error</th></tr>
+  {% for j in failed %}
+  <tr><td>{{ j.kind }}</td><td>{{ j.updated_at | ago }}</td><td class="num">{{ j.attempts }}</td><td>{{ j.last_error }}</td></tr>
+  {% endfor %}
+</table></div>
+<p class="muted">Failed jobs are kept 30 days. Recurring jobs keep running on their schedule.</p>
+{% else %}
+<p class="muted">None in the last 30 days.</p>
+{% endif %}
+
+<h2>API keys</h2>
+{% if garmin_key.configured %}
+<table class="narrow">
+  <tr><td>Garmin key expires</td><td>{{ garmin_key.expires or "not entered" }}{% if garmin_key.days is not none and garmin_key.days >= 0 %} <span class="muted">(in {{ garmin_key.days }} days)</span>{% endif %}</td></tr>
+  <tr><td>Status</td><td>{{ status(garmin_key.issue) }}</td></tr>
+</table>
+<form method="post" action="/integrity/garmin-key" class="row">
+  <input type="date" name="expires" value="{{ garmin_key.expires or '' }}" aria-label="Garmin key expiry date">
+  <button>Save</button>
+  <span class="muted">Garmin doesn't report the expiry; copy it from the key's page. A new key clears it. Warns 14 days ahead.</span>
+</form>
+{% else %}
+<p class="muted">No Garmin key set.</p>
+{% endif %}
+<p class="muted">Strava refresh tokens don't expire; a revoked connection shows above as "Not connected".</p>
+{% endblock %}

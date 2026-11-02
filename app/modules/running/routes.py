@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
 
-from app.core import garmin
+from app.core import garmin, jobs
 from app.core.charts import Series, chart, day_epoch, merge_points
 from app.core.jobs import enqueue
 from app.core.web import get_conn, render
@@ -408,7 +408,7 @@ def sync_page(request: Request, conn: Conn, error: str | None = None):
         token=_connected(conn),
         state=sync.sync_state(conn),
         counts=reports.sync_counts(conn),
-        failed=reports.failed_jobs(conn),
+        failed=jobs.failed(conn, "running.", limit=5),
         limits=strava.LIMITER.status(conn),
         history_missing=len(sync.history_without_streams(conn)),
         error=error,

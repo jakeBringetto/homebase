@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
-from app.core import auth, db, home
+from app.core import auth, db, home, integrity
 from app.core.config import Settings, get_settings
 from app.core.jobs import Recurring, Worker
 from app.core.module import Module
@@ -32,7 +32,10 @@ def create_app(settings: Settings | None = None, modules: list[Module] | None = 
         level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
 
-    handlers = {"core.maintenance": home.maintenance(settings)}
+    handlers = {
+        "core.maintenance": home.maintenance(settings),
+        "core.restore_check": integrity.restore_check(settings),
+    }
     recurring = [Recurring("core.maintenance", 86400)]
     migrations = {"core": db.MIGRATIONS_DIR}
     for m in modules:
@@ -76,6 +79,7 @@ def create_app(settings: Settings | None = None, modules: list[Module] | None = 
     app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
     app.include_router(auth.router)
     app.include_router(home.router)
+    app.include_router(integrity.router)
     for m in modules:
         app.include_router(m.router(), prefix=f"/{m.slug}")
 

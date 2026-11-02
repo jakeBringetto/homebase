@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter
 
 from app.core.jobs import Handler, Recurring
-from app.core.module import Module, Tile
+from app.core.module import Module, SyncStatus, Tile
 
 HERE = Path(__file__).parent
 SYNC_EVERY_S = 3 * 3600  # cheap when fresh: the job skips once last night is stored
@@ -54,3 +54,10 @@ class Recovery(Module):
 
     def recurring(self) -> list[Recurring]:
         return [Recurring("recovery.sync", SYNC_EVERY_S)]
+
+    def syncs(self, conn: sqlite3.Connection) -> list[SyncStatus]:
+        from app.core import garmin
+        from app.modules.recovery import sync
+
+        note = "" if garmin.get_settings().configured else "GARMIN_API_KEY not set"
+        return [SyncStatus("Garmin recovery", sync.sync_state(conn).last_full_sync, note)]

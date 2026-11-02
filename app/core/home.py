@@ -8,9 +8,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 
 from app import __version__
-from app.core import db
+from app.core import db, integrity
 from app.core.config import Settings
-from app.core.jobs import Handler
+from app.core.jobs import Handler, enqueue
 from app.core.module import Module, Tile
 from app.core.web import get_conn, render
 
@@ -30,8 +30,10 @@ def safe_tile(module: Module, conn: sqlite3.Connection) -> Tile:
 
 @router.get("/")
 def home(request: Request, conn: Annotated[sqlite3.Connection, Depends(get_conn)]):
-    tiles = [(m, safe_tile(m, conn)) for m in request.app.state.modules]
-    return render(request, "home.html", tiles=tiles)
+    app = request.app.state
+    tiles = [(m, safe_tile(m, conn)) for m in app.modules]
+    issues = integrity.report(conn, app.settings, app.modules)["issues"]
+    return render(request, "home.html", tiles=tiles, issues=issues)
 
 
 @router.get("/healthz")
@@ -40,7 +42,7 @@ def healthz():
 
 
 def maintenance(settings: Settings) -> Handler:
-    """Daily: prune old finished jobs, then back up the DB."""
+    """Daily: prune old finished jobs, back up the DB, then queue a test restore of it."""
 
     def run(conn: sqlite3.Connection, payload: dict) -> None:
         now = time.time()
@@ -50,5 +52,6 @@ def maintenance(settings: Settings) -> Handler:
             (now - 7 * 86400, now - 30 * 86400),
         )
         db.backup(conn, settings.backup_dir, "daily", keep=settings.backup_keep)
+        enqueue(conn, "core.restore_check", dedupe_key="core.restore_check")
 
     return run

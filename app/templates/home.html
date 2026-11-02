@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+{% if issues %}<p><a class="error" href="/integrity">⚠ {{ issues }} data integrity issue{{ "s" if issues != 1 }}</a></p>{% endif %}
 {% if tiles %}
 <div class="tiles">
   {% for m, tile in tiles %}

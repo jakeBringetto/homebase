@@ -74,6 +74,15 @@ def enqueue(
     return cur.rowcount == 1
 
 
+def failed(conn: sqlite3.Connection, prefix: str = "", limit: int = 20) -> list[sqlite3.Row]:
+    """Newest failed jobs (kept 30 days), optionally only kinds starting with `prefix`."""
+    return conn.execute(
+        "SELECT kind, attempts, last_error, updated_at FROM jobs"
+        " WHERE status = 'failed' AND kind LIKE ? ORDER BY updated_at DESC LIMIT ?",
+        (f"{prefix}%", limit),
+    ).fetchall()
+
+
 def backoff_s(attempts: int) -> float:
     """Exponential backoff from 1 min, capped at 6 h."""
     return min(60 * 2 ** (attempts - 1), MAX_BACKOFF_S)

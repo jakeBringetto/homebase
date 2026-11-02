@@ -19,6 +19,15 @@ class Tile:
     error: bool = False
 
 
+@dataclass(frozen=True)
+class SyncStatus:
+    """One data source's last successful sync, for the integrity page."""
+
+    name: str
+    last_ok: float | None
+    note: str = ""  # why it isn't syncing (e.g. not connected); blank when it should be
+
+
 class Module(ABC):
     """A feature: routes at /<slug>, `<slug>_*` tables, `<slug>.*` jobs, and a homepage tile."""
 
@@ -45,4 +54,8 @@ class Module(ABC):
         return {}
 
     def recurring(self) -> list[Recurring]:
+        return []
+
+    def syncs(self, conn: sqlite3.Connection) -> list[SyncStatus]:
+        """Each external source this module syncs from."""
         return []

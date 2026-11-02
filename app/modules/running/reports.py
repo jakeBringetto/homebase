@@ -564,11 +564,3 @@ def sync_counts(conn: sqlite3.Connection) -> dict:
     )
     total = conn.execute("SELECT count(*) FROM running_activities").fetchone()[0]
     return {"total": total, "streams": streams, "jobs": jobs}
-
-
-def failed_jobs(conn: sqlite3.Connection, limit: int = 5) -> list[sqlite3.Row]:
-    return conn.execute(
-        "SELECT kind, last_error, updated_at FROM jobs"
-        " WHERE kind LIKE 'running.%' AND status = 'failed' ORDER BY updated_at DESC LIMIT ?",
-        (limit,),
-    ).fetchall()

@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter
 
 from app.core.jobs import Handler, Recurring
-from app.core.module import Module, Tile
+from app.core.module import Module, SyncStatus, Tile
 
 HERE = Path(__file__).parent
 
@@ -69,3 +69,19 @@ class Running(Module):
 
     def recurring(self) -> list[Recurring]:
         return [Recurring("running.sync", 86400), Recurring("running.garmin", 86400)]
+
+    def syncs(self, conn: sqlite3.Connection) -> list[SyncStatus]:
+        from app.core import garmin
+        from app.modules.running import config, storage, sync
+        from app.modules.running.sources.strava import TOKEN_KEY, StravaToken
+
+        strava_note = ""
+        if not config.get_strava_settings().configured:
+            strava_note = "STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET not set"
+        elif storage.kv_get(conn, TOKEN_KEY, StravaToken) is None:
+            strava_note = "Not connected"
+        garmin_note = "" if garmin.get_settings().configured else "GARMIN_API_KEY not set"
+        return [
+            SyncStatus("Strava activities", sync.sync_state(conn).last_sync, strava_note),
+            SyncStatus("Garmin running form", sync.garmin_state(conn).synced_at, garmin_note),
+        ]
