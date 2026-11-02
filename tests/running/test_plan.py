@@ -76,6 +76,43 @@ def test_session_validation(bad):
         plan.Session(**{"day": MON, "kind": "easy", **bad})
 
 
+def test_phase_for_week_and_targets(running_conn):
+    c = running_conn
+    plan.save_phase(c, plan.Phase(name="Base", start_day=MON, end_day=MON + timedelta(days=20)))
+    plan.save_phase(c, plan.Phase(name="Build", start_day="2026-11-13", end_day="2026-12-13"))
+    assert [(p["name"], p["weeks"]) for p in plan.phases(c)] == [("Base", 3), ("Build", 5)]
+    p = plan.phase_for(c, MON + timedelta(weeks=2))
+    assert (p["name"], p["week_no"]) == ("Base", 3)  # overlaps Build's first week; first wins
+    assert plan.phase_for(c, MON + timedelta(weeks=3))["week_no"] == 2
+    assert plan.phase_for(c, MON - timedelta(weeks=1)) is None
+
+    plan.set_target(c, plan.Target(week=MON + timedelta(days=3), distance_m=30_000, quality=2))
+    t = plan.get_target(c, MON)  # stored under the Monday
+    assert (t["distance_m"], t["long_m"], t["quality"]) == (30_000, None, 2)
+    plan.set_target(c, plan.Target(week=MON, long_m=10_000))
+    assert plan.get_target(c, MON)["distance_m"] is None  # replaced, not merged
+    plan.set_target(c, plan.Target(week=MON))
+    assert plan.get_target(c, MON) is None
+
+
+def test_week_long_run_and_quality_done(running_conn):
+    c = running_conn
+    add(c, MON, "intervals", 8)
+    add(c, MON + timedelta(days=1), "tempo", 8)  # not run: doesn't count
+    add_activity(c, 1, "2026-10-26T07:00:00")
+    add_activity(c, 2, "2026-10-28T07:00:00", meters=14_000)  # unplanned
+    wk = plan.week(c, MON, today=MON + timedelta(days=6))
+    assert (wk["long_m"], wk["quality_done"]) == (14_000, 1)
+
+
+@pytest.mark.parametrize(
+    "bad", [{"name": ""}, {"end_day": date(2026, 10, 25)}, {"notes": "x" * 301}]
+)
+def test_phase_validation(bad):
+    with pytest.raises(ValueError):
+        plan.Phase(**{"name": "Base", "start_day": MON, "end_day": MON, **bad})
+
+
 @pytest.fixture
 def client(settings, running_conn):
     with TestClient(create_app(settings, [Running()])) as c:
@@ -117,3 +154,30 @@ def test_plan_pages(client, running_conn):
 
     client.post(f"/running/plan/{row['id']}/delete", data={"week": "2026-10-26"})
     assert running_conn.execute("SELECT count(*) FROM running_plan").fetchone()[0] == 1
+
+
+def test_target_and_phase_pages(client, running_conn):
+    week = {"week": "2026-10-28"}
+    r = client.post("/running/plan/target", data={**week, "distance": "30", "long": "12",
+                                                  "quality": "2", "notes": "light week"},
+                    follow_redirects=False)  # fmt: skip
+    assert r.headers["location"] == "/running/plan?week=2026-10-26"
+    assert plan.get_target(running_conn, MON)["long_m"] == 12_000
+    r = client.post("/running/plan/target", data={**week, "quality": "-1"})
+    assert r.status_code == 400 and 'value="-1"' in r.text
+
+    phase = {**week, "name": "Base", "start_day": "2026-10-26", "end_day": "2026-11-15"}
+    client.post("/running/plan/phase", data=phase)
+    page = client.get("/running/plan?week=2026-11-09").text
+    assert "<b>Base</b> · week 3 of 3" in page
+    page = client.get("/running/plan?week=2026-10-26").text
+    assert "This week: light week" in page and "0.0 km / 12.0 km" in page
+    pid = plan.phases(running_conn)[0]["id"]
+    assert 'value="2026-11-15"' in client.get(f"/running/plan?edit_phase={pid}").text
+
+    r = client.post("/running/plan/phase", data={**phase, "end_day": "2026-10-01"})
+    assert r.status_code == 400 and "on or after start" in r.text
+    client.post("/running/plan/phase", data={**phase, "phase_id": str(pid), "name": "Rebuild"})
+    assert [p["name"] for p in plan.phases(running_conn)] == ["Rebuild"]
+    client.post(f"/running/plan/phase/{pid}/delete", data=week)
+    assert plan.phases(running_conn) == []

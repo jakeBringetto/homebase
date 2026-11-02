@@ -1,15 +1,16 @@
-"""Weekly training plan: planned sessions, matched to activities on the same local day."""
+"""Training plan: phases, weekly targets, and sessions matched to same-day activities."""
 
 import sqlite3
 import time
 from datetime import date, timedelta
 from typing import Literal, get_args
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 Kind = Literal["easy", "long", "tempo", "intervals", "recovery", "race", "cross", "rest"]
 KINDS = get_args(Kind)
 RUN_KINDS = KINDS[:6]  # matched to runs; "cross" matches non-run activities; "rest" matches none
+QUALITY_KINDS = ("tempo", "intervals")
 
 
 class Session(BaseModel):
@@ -17,6 +18,27 @@ class Session(BaseModel):
     kind: Kind
     distance_m: float | None = Field(default=None, gt=0, le=200_000)
     duration_s: int | None = Field(default=None, gt=0, le=86_400)
+    notes: str = Field(default="", max_length=200)
+
+
+class Phase(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    start_day: date
+    end_day: date
+    notes: str = Field(default="", max_length=300)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> "Phase":
+        if self.end_day < self.start_day:
+            raise ValueError("end must be on or after start")
+        return self
+
+
+class Target(BaseModel):
+    week: date
+    distance_m: float | None = Field(default=None, gt=0, le=1_000_000)
+    long_m: float | None = Field(default=None, gt=0, le=200_000)
+    quality: int | None = Field(default=None, ge=0, le=14)
     notes: str = Field(default="", max_length=200)
 
 
@@ -57,6 +79,74 @@ def copy_week(conn: sqlite3.Connection, src: date, dst: date) -> int:
     return cur.rowcount
 
 
+def _monday(d: date) -> date:
+    return d - timedelta(days=d.weekday())
+
+
+def save_phase(conn: sqlite3.Connection, p: Phase, phase_id: int | None = None) -> None:
+    """Insert a phase, or replace the one with `phase_id`."""
+    values = (p.name.strip(), p.start_day.isoformat(), p.end_day.isoformat(), p.notes.strip())
+    if phase_id is None:
+        conn.execute(
+            "INSERT INTO running_plan_phases (name, start_day, end_day, notes) VALUES (?, ?, ?, ?)",
+            values,
+        )
+    else:
+        conn.execute(
+            "UPDATE running_plan_phases SET name = ?, start_day = ?, end_day = ?, notes = ?"
+            " WHERE id = ?",
+            (*values, phase_id),
+        )
+
+
+def get_phase(conn: sqlite3.Connection, phase_id: int) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM running_plan_phases WHERE id = ?", (phase_id,)).fetchone()
+
+
+def delete_phase(conn: sqlite3.Connection, phase_id: int) -> None:
+    conn.execute("DELETE FROM running_plan_phases WHERE id = ?", (phase_id,))
+
+
+def phases(conn: sqlite3.Connection) -> list[dict]:
+    """All phases in date order, each with its Monday and length in weeks."""
+    rows = conn.execute("SELECT * FROM running_plan_phases ORDER BY start_day, id").fetchall()
+    out = []
+    for r in rows:
+        first = _monday(date.fromisoformat(r["start_day"]))
+        weeks = (_monday(date.fromisoformat(r["end_day"])) - first).days // 7 + 1
+        out.append({**dict(r), "monday": first, "weeks": weeks})
+    return out
+
+
+def phase_for(conn: sqlite3.Connection, monday: date) -> dict | None:
+    """The first phase overlapping this week, with `week_no` (1-based) added."""
+    sunday = monday + timedelta(days=6)
+    for p in phases(conn):
+        if p["start_day"] <= sunday.isoformat() and p["end_day"] >= monday.isoformat():
+            return {**p, "week_no": (monday - p["monday"]).days // 7 + 1}
+    return None
+
+
+def set_target(conn: sqlite3.Connection, t: Target) -> None:
+    """Upsert the week's target; an all-empty target deletes it."""
+    week = _monday(t.week).isoformat()
+    if t.distance_m is None and t.long_m is None and t.quality is None and not t.notes.strip():
+        conn.execute("DELETE FROM running_plan_targets WHERE week = ?", (week,))
+        return
+    conn.execute(
+        "INSERT INTO running_plan_targets (week, distance_m, long_m, quality, notes)"
+        " VALUES (?, ?, ?, ?, ?) ON CONFLICT (week) DO UPDATE SET distance_m = excluded.distance_m,"
+        " long_m = excluded.long_m, quality = excluded.quality, notes = excluded.notes",
+        (week, t.distance_m, t.long_m, t.quality, t.notes.strip()),
+    )
+
+
+def get_target(conn: sqlite3.Connection, monday: date) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM running_plan_targets WHERE week = ?", (monday.isoformat(),)
+    ).fetchone()
+
+
 def week(conn: sqlite3.Connection, monday: date, today: date) -> dict:
     """Days of the week with (session, activity, status) items, plus planned vs done totals."""
     end = (monday + timedelta(days=7)).isoformat()
@@ -87,6 +177,10 @@ def week(conn: sqlite3.Connection, monday: date, today: date) -> dict:
         "done": matched,
         "planned_m": sum(s["distance_m"] or 0 for s in planned if s["kind"] in RUN_KINDS),
         "run_m": sum(a["distance_m"] for a in acts if a["is_run"]),
+        "long_m": max((a["distance_m"] for a in acts if a["is_run"]), default=0),
+        "quality_done": sum(
+            st == "done" and s["kind"] in QUALITY_KINDS for d in days for s, _, st in d["items"]
+        ),
     }
 
 

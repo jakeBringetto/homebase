@@ -307,12 +307,24 @@ def _monday(week: str | None) -> date:
 
 def _plan_page(
     request: Request, conn: sqlite3.Connection, monday: date, form: dict | None = None,
-    edit_id: int | None = None, error: str | None = None, status: int = 200,
+    edit_id: int | None = None, errors: dict | None = None, status: int = 200,
+    target_form: dict | None = None, phase_form: dict | None = None,
+    phase_id: int | None = None,
 ):  # fmt: skip
     today = date.today()
+    f = _ctx(conn)["f"]
     default_day = today if monday <= today < monday + timedelta(days=7) else monday
     blank = {"day": default_day.isoformat(), "kind": "easy"}
     blank |= dict.fromkeys(("distance", "minutes", "notes"), "")
+    target = plan.get_target(conn, monday)
+    if target_form is None:
+        dist = lambda m: f.dist(m, unit=False) if m else ""  # noqa: E731
+        target_form = {
+            "distance": dist(target and target["distance_m"]),
+            "long": dist(target and target["long_m"]),
+            "quality": "" if not target or target["quality"] is None else target["quality"],
+            "notes": target["notes"] if target else "",
+        }
     return render(
         request, "running/plan.html", **_ctx(conn), status=status,
         monday=monday, today=today, this_monday=reports.week_start(today),
@@ -320,12 +332,22 @@ def _plan_page(
         wk=plan.week(conn, monday, today), kinds=plan.KINDS, run_kinds=plan.RUN_KINDS,
         spikes=reports.spike_pcts(conn, monday),
         caps=reports.spike_caps(conn, min(monday, today), max(monday + timedelta(days=6), today)),
-        form=form or blank, edit_id=edit_id, error=error,
+        form=form or blank, edit_id=edit_id, errors=errors or {},
+        target=target, target_form=target_form,
+        phase=plan.phase_for(conn, monday), phases=plan.phases(conn),
+        phase_form=phase_form or {"name": "", "start_day": "", "end_day": "", "notes": ""},
+        phase_id=phase_id,
     )  # fmt: skip
 
 
 @router.get("/plan")
-def plan_page(request: Request, conn: Conn, week: str | None = None, edit: int | None = None):
+def plan_page(
+    request: Request, conn: Conn, week: str | None = None, edit: int | None = None,
+    edit_phase: int | None = None,
+):  # fmt: skip
+    if edit_phase and (p := plan.get_phase(conn, edit_phase)):
+        form = {k: p[k] for k in ("name", "start_day", "end_day", "notes")}
+        return _plan_page(request, conn, _monday(week), phase_form=form, phase_id=p["id"])
     row = plan.get(conn, edit) if edit else None
     if row is None:
         return _plan_page(request, conn, _monday(week))
@@ -362,8 +384,9 @@ def plan_save(
     except ValueError as e:
         edit_id = int(session_id) if session_id.isdigit() else None
         return _plan_page(
-            request, conn, _monday(week), form, edit_id, error=_error_msg(e), status=400
-        )
+            request, conn, _monday(week), form, edit_id,
+            errors={"session": _error_msg(e)}, status=400,
+        )  # fmt: skip
     plan.save(conn, s, sid)
     conn.commit()
     return RedirectResponse(f"/running/plan?week={reports.week_start(s.day)}", 303)
@@ -384,6 +407,67 @@ def plan_copy(conn: Conn, week: Annotated[str, Form()]):
         plan.copy_week(conn, monday - timedelta(weeks=1), monday)
         conn.commit()
     return RedirectResponse(f"/running/plan?week={monday}", 303)
+
+
+@router.post("/plan/target")
+def plan_target(
+    request: Request,
+    conn: Conn,
+    week: Annotated[str, Form()],
+    distance: Annotated[str, Form()] = "",
+    long: Annotated[str, Form()] = "",
+    quality: Annotated[str, Form()] = "",
+    notes: Annotated[str, Form()] = "",
+):
+    monday = _monday(week)
+    form = {"distance": distance, "long": long, "quality": quality, "notes": notes}
+    m_per_unit = _ctx(conn)["f"].m
+    to_m = lambda v: float(v) * m_per_unit if v.strip() else None  # noqa: E731
+    try:
+        t = plan.Target(
+            week=monday, distance_m=to_m(distance), long_m=to_m(long), notes=notes,
+            quality=int(quality) if quality.strip() else None,
+        )  # fmt: skip
+    except ValueError as e:
+        return _plan_page(
+            request, conn, monday, errors={"target": _error_msg(e)}, status=400,
+            target_form=form,
+        )  # fmt: skip
+    plan.set_target(conn, t)
+    conn.commit()
+    return RedirectResponse(f"/running/plan?week={monday}", 303)
+
+
+@router.post("/plan/phase")
+def plan_phase(
+    request: Request,
+    conn: Conn,
+    week: Annotated[str, Form()],
+    name: Annotated[str, Form()],
+    start_day: Annotated[str, Form()],
+    end_day: Annotated[str, Form()],
+    notes: Annotated[str, Form()] = "",
+    phase_id: Annotated[str, Form()] = "",
+):
+    form = {"name": name, "start_day": start_day, "end_day": end_day, "notes": notes}
+    pid = int(phase_id) if phase_id.isdigit() else None
+    try:
+        p = plan.Phase(name=name, start_day=start_day, end_day=end_day, notes=notes)
+    except ValueError as e:
+        return _plan_page(
+            request, conn, _monday(week), errors={"phase": _error_msg(e)}, status=400,
+            phase_form=form, phase_id=pid,
+        )  # fmt: skip
+    plan.save_phase(conn, p, pid)
+    conn.commit()
+    return RedirectResponse(f"/running/plan?week={_monday(week)}#phases", 303)
+
+
+@router.post("/plan/phase/{phase_id}/delete")
+def plan_phase_delete(conn: Conn, phase_id: int, week: Annotated[str, Form()] = ""):
+    plan.delete_phase(conn, phase_id)
+    conn.commit()
+    return RedirectResponse(f"/running/plan?week={_monday(week)}#phases", 303)
 
 
 @router.get("/shoes")
