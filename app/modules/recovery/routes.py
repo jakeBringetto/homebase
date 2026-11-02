@@ -1,4 +1,5 @@
-"""Recovery pages: overview (HRV, RHR, sleep, next-morning response, readiness), sync, charts."""
+"""Recovery pages: overview (HRV, RHR, sleep, next-morning response, readiness), sleep timing,
+training–sleep lags, sync, charts."""
 
 import sqlite3
 import time
@@ -6,14 +7,14 @@ from datetime import date
 from typing import Annotated
 
 import numpy as np
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 
-from app.core import garmin
+from app.core import garmin, jobs
 from app.core.charts import Series, chart, day_epoch
 from app.core.jobs import enqueue
 from app.core.web import get_conn, render
-from app.modules.recovery import reports, sync
+from app.modules.recovery import lag, reports, sleep_timing, sync
 from app.modules.running import reports as running_reports
 
 router = APIRouter()
@@ -23,6 +24,10 @@ RangeKey = Annotated[str | None, Query(alias="range")]
 
 def _r1(v: float | None) -> float | None:
     return None if v is None else round(v, 1)
+
+
+def _r2(v: float | None) -> float | None:
+    return None if v is None else round(v, 2)
 
 
 @router.get("/")
@@ -117,6 +122,70 @@ def response_chart(conn: Conn, rng: RangeKey = None):
     )
 
 
+@router.get("/sleep")
+def sleep_page(request: Request, conn: Conn, rng: RangeKey = None):
+    key, start = reports.range_start(rng, date.today())
+    ns = sleep_timing.nights(conn, start)
+    return render(
+        request,
+        "recovery/sleep.html",
+        rng=key,
+        ranges=reports.RANGES,
+        start=start,
+        s=sleep_timing.summary(ns),
+        morning=sleep_timing.next_morning(conn, ns, start),
+        clock=sleep_timing.clock,
+        min_nights=sleep_timing.MIN_NIGHTS,
+    )
+
+
+@router.get("/charts/sleep-timing.json")
+def sleep_timing_chart(conn: Conn, rng: RangeKey = None):
+    _, start = reports.range_start(rng, date.today())
+    ns = [n for n in sleep_timing.nights(conn, start) if n.utc_offset_s is not None]
+    series = [
+        Series("Bedtime", [_r2(n.bed_h) for n in ns], paths="points"),
+        Series("Wake time", [_r2(n.wake_h) for n in ns], paths="points"),
+    ]
+    return chart([day_epoch(n.day) for n in ns], series, "Local time", y_format="clock")
+
+
+@router.get("/charts/sri.json")
+def sri_chart(conn: Conn, rng: RangeKey = None):
+    _, start = reports.range_start(rng, date.today())
+    ps = sleep_timing.pairs(sleep_timing.nights(conn, start))
+    values = [round(sleep_timing.pair_sri(a, b), 1) for a, b in ps]
+    return chart([day_epoch(b.day) for _, b in ps], [Series("SRI", values, paths="points")], "SRI")
+
+
+@router.get("/lag")
+def lag_page(request: Request, conn: Conn, rng: RangeKey = None):
+    today = date.today()
+    key, start = reports.range_start(rng or "1y", today)
+    return render(
+        request,
+        "recovery/lag.html",
+        rng=key,
+        ranges=reports.RANGES,
+        start=start,
+        rows=lag.table(lag.points(conn, start, today)),
+        charts=[p for p in lag.PAIRS if p.key in lag.CHARTS],
+        min_n=lag.MIN_N,
+    )
+
+
+@router.get("/charts/lag/{pair}.json")
+def lag_chart(pair: str, conn: Conn, rng: RangeKey = None):
+    p = next((p for p in lag.PAIRS if p.key == pair), None)
+    if p is None:
+        raise HTTPException(404)
+    today = date.today()
+    _, start = reports.range_start(rng or "1y", today)
+    pts = sorted(lag.points(conn, start, today)[pair])
+    series = [Series(p.y_label, [_r1(y) for _, y in pts], paths="points")]
+    return chart([_r1(x) for x, _ in pts], series, p.y_label, x_label=p.x_label)
+
+
 @router.get("/sync")
 def sync_page(request: Request, conn: Conn):
     settings = garmin.get_settings()
@@ -130,10 +199,7 @@ def sync_page(request: Request, conn: Conn):
         state=sync.sync_state(conn),
         counts=reports.counts(conn),
         limits=garmin.LIMITER.status(conn),
-        failed=conn.execute(
-            "SELECT kind, last_error FROM jobs WHERE kind LIKE 'recovery.%' AND status = 'failed'"
-            " ORDER BY updated_at DESC LIMIT 5"
-        ).fetchall(),
+        failed=jobs.failed(conn, "recovery.", limit=5),
     )
 
 

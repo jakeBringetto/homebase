@@ -66,6 +66,14 @@ def _epoch(v) -> int | None:
     return None
 
 
+def _offset(local, gmt) -> int | None:
+    """Local minus UTC in seconds, from a `*TimestampLocal` / `*TimestampGMT` pair (ms epochs)."""
+    if (lo := _num(local)) is None or (g := _num(gmt)) is None:
+        return None
+    s = round((lo - g) / 1000 / 900) * 900  # time zones are whole quarter hours
+    return s if abs(s) <= 14 * 3600 else None
+
+
 def _day(item: dict) -> str | None:
     d = item.get("calendarDate")
     try:
@@ -132,4 +140,7 @@ def parse_sleep(item: dict) -> Sleep | None:
         resp_avg=_num(item.get("averageRespirationValue")),
         score=_int(_obj(scores, "overall").get("value")),
         scores_json=json.dumps(scores) if scores else None,
+        utc_offset_s=_offset(
+            item.get("sleepStartTimestampLocal"), item.get("sleepStartTimestampGMT")
+        ),
     )

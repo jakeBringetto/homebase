@@ -8,6 +8,12 @@ const formats = {
     const t = Math.round(s);
     return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
   },
+  // Hours from midnight, possibly negative (-1.5 = 22:30 the evening before).
+  clock: (h) => {
+    if (h == null) return "";
+    const m = ((Math.round(h * 60) % 1440) + 1440) % 1440;
+    return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  },
 };
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();

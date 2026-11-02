@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "macros.html" import chart %}
+{% block title %}Sleep · Recovery · Homebase{% endblock %}
+{% macro num(v, fmt="%.0f") %}{{ fmt | format(v) if v is not none else "–" }}{% endmacro %}
+{% block content %}
+{% include "recovery/_tabs.html" %}
+{% set q = "?range=" ~ rng %}
+
+<p class="ranges">
+  {% for key, (label, _) in ranges.items() %}<a href="?range={{ key }}"{% if key == rng %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</p>
+
+{% if not s.nights %}
+<p class="muted">No nights with sleep times in this range.</p>
+{% else %}
+<section class="stats">
+  <div><span class="muted">Regularity (approx. SRI)</span><b>{{ num(s.sri) }}</b></div>
+  <div><span class="muted">Usual bedtime · spread</span><b>{{ clock(s.bed_h) }}{% if s.bed_sd_min is not none %} · ±{{ num(s.bed_sd_min) }} min{% endif %}</b></div>
+  <div><span class="muted">Usual wake time · spread</span><b>{{ clock(s.wake_h) }}{% if s.wake_sd_min is not none %} · ±{{ num(s.wake_sd_min) }} min{% endif %}</b></div>
+  <div><span class="muted">Night-to-night shift</span><b>{{ num(s.shift_min) }} min</b></div>
+</section>
+<p class="muted">{{ s.nights }} nights since {{ start.strftime("%b %-d, %Y") }}, {{ s.pairs }} of them back to back.
+Regularity and shift need {{ min_nights }} back-to-back pairs; usual times are medians, spread is 1 SD.
+{% if s.missing_local %}{{ s.missing_local }} nights have no local time yet; the next sync fills them in.{% endif %}</p>
+
+<h2>Bedtime and wake time</h2>
+<p class="muted">Start and end of each night's main sleep, on the local clock.</p>
+{{ chart("/recovery/charts/sleep-timing.json" ~ q, 260) }}
+
+<h2>Regularity</h2>
+<p class="muted">Sleep Regularity Index for each pair of back-to-back nights: the chance of being in the same state (asleep or awake) at any time on both days, scaled so 100 is identical timing and 0 is chance. In a large UK cohort, people with more regular sleep had lower mortality risk, and regularity predicted it better than duration (Windred et al. 2024). That study measured every minute with a wrist sensor, including naps and waking in the night. This version uses only Garmin's main sleep window, so it reads higher: compare it with your own history, not the study's numbers.</p>
+{% if s.pairs %}{{ chart("/recovery/charts/sri.json" ~ q, 200) }}{% endif %}
+
+<h2>Weekdays and weekends</h2>
+<p class="muted">Grouped by wake-up day. Social jetlag is how much later the middle of sleep falls on Saturday and Sunday mornings than on weekdays (Wittmann et al. 2006).</p>
+<table class="narrow">
+  <tr><th>Waking on</th><th class="num">Nights</th><th class="num">Bedtime</th><th class="num">Wake</th><th class="num">Midpoint</th><th class="num">Sleep (h)</th></tr>
+  {% for label, g in [("Mon–Fri", s.work), ("Sat–Sun", s.free)] %}
+  <tr><td>{{ label }}</td><td class="num">{{ g.nights }}</td><td class="num">{{ clock(g.bed_h) }}</td><td class="num">{{ clock(g.wake_h) }}</td>
+    <td class="num">{{ clock(g.mid_h) }}</td><td class="num">{{ num(g.sleep_h, "%.1f") }}</td></tr>
+  {% endfor %}
+</table>
+{% if s.jetlag_min is not none %}<p>Social jetlag: <b>{{ "%+.0f" | format(s.jetlag_min) }} min</b></p>{% endif %}
+
+<h2>Timing shifts and the next morning</h2>
+<p class="muted">Each night grouped by how far the middle of sleep moved from the night before, against that morning's HRV, resting HR and sleep score. Groups under about 10 nights are a hint, not a finding.</p>
+<table class="narrow">
+  <tr><th>Shift from previous night</th><th class="num">Nights</th><th class="num">HRV (ms)</th><th class="num">RHR (bpm)</th><th class="num">Sleep score</th></tr>
+  {% for b in morning %}
+  <tr><td>{{ b.label }}</td><td class="num">{{ b.nights }}</td><td class="num">{{ num(b.hrv, "%.1f") }}</td>
+    <td class="num">{{ num(b.rhr, "%.1f") }}</td><td class="num">{{ num(b.score) }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

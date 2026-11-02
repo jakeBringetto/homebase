@@ -121,5 +121,6 @@ def test_pages_render(recovery_conn, settings, garmin_fake):
         for name in ["hrv", "hrv-cv", "rhr", "sleep", "response", "readiness"]:
             body = client.get(f"/recovery/charts/{name}.json?range=bogus").json()
             assert "data" in body, name
-        assert client.get("/recovery/charts/hrv.json").json()["data"][1] == [70]
+        # The worker's startup sync (fake Garmin, also 70 ms) may have filled in more nights.
+        assert client.get("/recovery/charts/hrv.json").json()["data"][1][-1] == 70
         assert "HRV 70 ms (normal 60–90)" in client.get("/").text

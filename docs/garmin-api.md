@@ -94,6 +94,7 @@ Others: v1 single-day summary, steps (28 d), hydration (31 d), SpO2 acclimation,
 - **Sleep** `[DailySleepDTO]`:
   - **Placeholder rows:** days without sleep come back as rows with every field null, including `calendarDate`. Skip them [S].
   - **Timestamps** (`sleepStartTimestampGMT`, ...) are **epoch ms integers** [S].
+  - **Local time:** `sleepStartTimestampLocal` / `sleepEndTimestampLocal` are the local clock written as if it were UTC, so `Local − GMT` is the night's UTC offset (it follows DST and travel) [S]. Also `autoSleepStart/EndTimestampGMT`.
   - Stage fields are in seconds: `sleepTimeSeconds`, `deepSleepSeconds`, `lightSleepSeconds`, `remSleepSeconds`, `awakeSleepSeconds`. Also `avgHeartRate`, `avgSleepStress`, `averageRespirationValue`.
   - **`sleepScores`** [S]: `overall.{value (0–100), qualifierKey}`, plus per-component `{value?, qualifierKey, optimalStart, optimalEnd}` for totalDuration, stress, awakeCount, remPercentage, lightPercentage, deepPercentage, restlessness...
   - **`sleepNeed`:** `{baseline, actual, feedback, trainingFeedback}`.

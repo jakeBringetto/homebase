@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "macros.html" import chart %}
+{% block title %}Training & sleep · Recovery · Homebase{% endblock %}
+{% block content %}
+{% include "recovery/_tabs.html" %}
+{% set q = "?range=" ~ rng %}
+
+<p class="ranges">
+  {% for key, (label, _) in ranges.items() %}<a href="?range={{ key }}"{% if key == rng %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</p>
+
+<p class="muted">Does training change how you sleep and recover, and does sleep change how the next run feels? Each row is one pair chosen in advance, since {{ start.strftime("%b %-d, %Y") }}.
+HRV is each night's value against the mean of the 7 nights before it, so slow trends don't count. Training load is the day's TRIMP from Running (0 on rest days).
+Run HR vs expected is positive when a run's HR was higher than usual for its pace.</p>
+
+<div class="scroll"><table>
+  <tr><th>Training or sleep (x)</th><th>Measured (y)</th><th>When</th><th class="num">n</th><th class="num">Spearman ρ</th><th class="num">95% CI</th><th>Reading</th></tr>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.pair.x_label }}</td><td>{{ r.pair.y_label }}</td><td>{{ r.pair.lag }}</td><td class="num">{{ r.n }}</td>
+    {% if r.rho is not none %}
+    <td class="num">{{ "%+.2f" | format(r.rho) }}</td><td class="num">{{ "%+.2f" | format(r.lo) }} to {{ "%+.2f" | format(r.hi) }}</td>
+    <td>{% if r.clear %}{{ "Higher x, higher y" if r.rho > 0 else "Higher x, lower y" }}{% else %}<span class="muted">No clear link</span>{% endif %}</td>
+    {% else %}
+    <td class="num">–</td><td class="num">–</td><td class="muted">Needs {{ min_n }}</td>
+    {% endif %}
+  </tr>
+  {% endfor %}
+</table></div>
+<p class="muted">ρ runs from −1 to +1; around ±0.1 is small and ±0.3 moderate. "No clear link" means the interval includes 0, not that there's no effect: with this many days, only moderate effects can show up.
+The intervals aren't corrected for testing {{ rows | length }} pairs, so expect about one in three such tables to show a "clear" row by chance alone, and day-to-day values that follow on from each other make the intervals somewhat too narrow.
+Read a clear row as something to watch, and check it again as more nights come in.</p>
+
+{% for p in charts %}
+<h2>{{ p.x_label }} → {{ p.y_label }}, {{ p.lag }}</h2>
+{{ chart("/recovery/charts/lag/" ~ p.key ~ ".json" ~ q, 220) }}
+{% endfor %}
+{% endblock %}

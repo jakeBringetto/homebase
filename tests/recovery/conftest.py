@@ -94,6 +94,7 @@ class FakeGarmin:
         return {
             "calendarDate": d.isoformat(),
             "sleepStartTimestampGMT": start_ms, "sleepEndTimestampGMT": start_ms + 28800000,
+            "sleepStartTimestampLocal": start_ms - 7 * 3600 * 1000,
             "sleepTimeSeconds": 27000, "deepSleepSeconds": 6000, "lightSleepSeconds": 15000,
             "remSleepSeconds": 6000, "awakeSleepSeconds": 1800, "awakeCount": 2,
             "avgHeartRate": 49.0, "avgSleepStress": 15.0, "averageRespirationValue": 13.5,

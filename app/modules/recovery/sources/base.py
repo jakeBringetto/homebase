@@ -46,6 +46,7 @@ class Sleep:
     resp_avg: float | None
     score: int | None
     scores_json: str | None
+    utc_offset_s: int | None = None  # local minus UTC
 
 
 class RecoverySource(ABC):

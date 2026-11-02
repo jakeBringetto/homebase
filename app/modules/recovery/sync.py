@@ -18,11 +18,15 @@ STATE_KEY = "sync_state"
 # Garmin may keep only a rolling year (unconfirmed), so fetch it all once and keep it.
 HISTORY_DAYS = 365
 FRESH_S = 86400
+# Bump when stored sleep rows need a field they lack; the next sync re-fetches a year of
+# sleep once (12 calls). 1: utc_offset_s.
+SLEEP_VERSION = 1
 
 
 class SyncState(BaseModel):
     through: dict[str, str] = {}  # kind -> last local day fetched (YYYY-MM-DD)
     last_full_sync: float | None = None
+    sleep_version: int = 0
 
 
 def sync_state(conn: sqlite3.Connection) -> SyncState:
@@ -61,6 +65,11 @@ def run_sync(conn: sqlite3.Connection, payload: dict) -> None:
         return
     today = date.today()
     st = sync_state(conn)
+    if st.sleep_version != SLEEP_VERSION:
+        st.through.pop("sleep", None)
+        st.sleep_version, st.last_full_sync = SLEEP_VERSION, None  # None: not fresh
+        storage.kv_set(conn, STATE_KEY, st)
+        conn.commit()
     if not payload.get("force") and is_fresh(conn, st, today):
         return
     with client.make_http() as http:
