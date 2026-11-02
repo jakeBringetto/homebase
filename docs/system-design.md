@@ -45,6 +45,7 @@ browser ──HTTP──> FastAPI (Jinja + htmx pages, small JSON endpoints for 
 - `Dockerfile`: python:3.12-slim, `uv` install, non-root user, `/data` volume.
 - `compose.yaml`: one service, `.env`, `./data:/data`, `restart: unless-stopped`.
 - Laptop and Pi run the same image; the Pi uses 64-bit Raspberry Pi OS.
+- Time zone: set `TZ` (IANA name) in `.env`. "Today" is the container's local date (`date.today()`), so leaving it at UTC shifts day boundaries. The slim base image already ships the zoneinfo database.
 - Backup: nightly job runs `VACUUM INTO /data/backups/homebase-daily-*.db`, keeping the last 7. A `core.restore_check` job then copies the newest backup to a scratch file, runs `PRAGMA integrity_check` and reads every table back.
 - Data integrity page (`/integrity`): last successful sync per source (`Module.syncs()`), last backup, last verified restore, DB size and free disk, failed jobs, and the Garmin key's expiry (entered by hand; the API doesn't report it). The homepage links to it when anything needs attention.
 
