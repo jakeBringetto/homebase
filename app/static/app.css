@@ -79,8 +79,20 @@ code { font-size: .9em; }
 .ranges a[aria-current] { color: var(--fg); border-color: var(--accent); }
 
 .stats { display: flex; flex-wrap: wrap; gap: 2rem; }
-.stats div { display: grid; }
+.stats div { display: grid; align-content: start; }
 .stats b { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+.stats small { color: var(--muted); }
+
+.plan-head p { margin: .25rem 0; }
+table.plan td { vertical-align: top; }
+table.plan td.day { white-space: nowrap; color: var(--muted); }
+table.plan tr.today td.day { color: var(--fg); font-weight: 600; box-shadow: inset 3px 0 var(--accent); }
+table.plan tr.cont td { border-bottom: 0; }  /* same day continues on the next row */
+table.plan tr.rest td:not(.day) { color: var(--muted); }
+table.plan .note { display: block; max-width: 52ch; color: var(--muted); font-size: .85em; }
+details.edit { margin-top: 1.25rem; }
+details.edit > summary { color: var(--fg); font-weight: 600; }
+details.edit[open] > summary { margin-bottom: .75rem; }
 
 .zonebar { display: flex; gap: 2px; width: 160px; height: 10px; }
 .zonebar span { border-radius: 2px; }

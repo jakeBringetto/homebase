@@ -8,46 +8,47 @@
   <a href="?week={{ next }}">Next →</a>
   {% if monday != this_monday %}<a href="?week={{ this_monday }}">This week</a>{% endif %}
 </p>
-{% if phase %}
-<p><b>{{ phase.name }}</b> · week {{ phase.week_no }} of {{ phase.weeks }}{% if phase.notes %}<br><span class="muted">{{ phase.notes }}</span>{% endif %}</p>
+{% if phase or (target and target.notes) %}
+<div class="plan-head">
+  {% if phase %}<p><b>{{ phase.name }}</b> · week {{ phase.week_no }} of {{ phase.weeks }}{% if phase.notes %} <span class="muted">· {{ phase.notes }}</span>{% endif %}</p>{% endif %}
+  {% if target and target.notes %}<p>This week: {{ target.notes }}</p>{% endif %}
+</div>
 {% endif %}
-{% if target and target.notes %}<p>This week: {{ target.notes }}</p>{% endif %}
 
 <section class="stats">
-  <div><span class="muted">Sessions done</span><b>{{ wk.done }} / {{ wk.planned }}</b></div>
-  <div><span class="muted">Run distance{% if wk.planned_m %} / planned{% endif %}</span>
-    <b>{{ f.dist(wk.run_m) }}{% if wk.planned_m %} / {{ f.dist(wk.planned_m) }}{% endif %}</b></div>
-  {% if target and target.distance_m %}
-  <div><span class="muted">Weekly target</span><b>{{ f.dist(target.distance_m) }}</b></div>
-  {% endif %}
+  {% set goal_m = target.distance_m if target and target.distance_m else wk.planned_m %}
+  <div><span class="muted">Run{% if goal_m %} / {{ "target" if target and target.distance_m else "planned" }}{% endif %}</span>
+    <b>{{ f.dist(wk.run_m) }}{% if goal_m %} / {{ f.dist(goal_m) }}{% endif %}</b>
+    {% if target and target.distance_m and wk.planned_m and f.dist(wk.planned_m) != f.dist(target.distance_m) %}<small>{{ f.dist(wk.planned_m) }} planned</small>{% endif %}</div>
   {% if target and target.long_m %}
   <div><span class="muted">Longest run / target</span>
-    <b>{{ f.dist(wk.long_m) }} / {{ f.dist(target.long_m) }}{% if monday == this_monday and caps[today] and target.long_m > caps[today] %} <span class="badge" title="The target is more than 10% longer than your longest run in the previous 30 days">over {{ f.dist(caps[today], floor=True) }}</span>{% endif %}</b></div>
+    <b>{{ f.dist(wk.long_m) }} / {{ f.dist(target.long_m) }}</b>
+    {% if monday == this_monday and caps[today] and target.long_m > caps[today] %}<small><span class="badge" title="The target is more than 10% longer than your longest run in the previous 30 days">over {{ f.dist(caps[today], floor=True) }}</span></small>{% endif %}</div>
   {% endif %}
-  {% if target and target.quality is not none %}
-  <div><span class="muted" title="Planned tempo or interval sessions that were done">Tempo/interval sessions / target</span><b>{{ wk.quality_done }} / {{ target.quality }}</b></div>
-  {% endif %}
-  <div><span class="muted" title="10% over your longest run in the previous 30 days is a spike">Longest run today without a spike</span>
-    <b>{{ f.dist(caps[today], floor=True) if caps[today] else "No runs in 30 days" }}</b></div>
+  <div><span class="muted">Sessions done</span><b>{{ wk.done }} / {{ wk.planned }}</b>
+    {% if target and target.quality %}<small title="Planned tempo or interval sessions that were done">{{ wk.quality_done }} / {{ target.quality }} interval</small>{% endif %}</div>
+  <div><span class="muted" title="10% over your longest run in the previous 30 days is a spike">Spike limit today</span>
+    <b>{{ f.dist(caps[today], floor=True) if caps[today] else "–" }}</b>
+    {% if not caps[today] %}<small>No runs in 30 days</small>{% endif %}</div>
 </section>
 
 <div class="scroll">
-<table>
-  <tr>
-    <th>Day</th><th>Planned</th><th class="num">Target</th><th>Actual</th><th class="num">Distance</th>
-    <th class="num">Pace</th><th class="num">Avg HR</th><th>Status</th><th></th>
-  </tr>
+<table class="plan">
+  <tr><th>Day</th><th>Planned</th><th>Done</th><th>Status</th><th></th></tr>
   {% for d in wk.days %}
-  {% set label = d.day.strftime("%a %b %-d") %}
+  {% set label = d.day.strftime("%a %-d") %}
   {% for s, a, status in d["items"] %}
-  <tr>
-    <td>{% if loop.first %}{% if d.day == today %}<b>{{ label }}</b>{% else %}{{ label }}{% endif %}{% endif %}</td>
-    <td>{% if s %}{{ s.kind }}{% if s.notes %} <span class="muted">· {{ s.notes }}</span>{% endif %}{% endif %}</td>
-    <td class="num">{% if s %}{{ [f.dist(s.distance_m) if s.distance_m, f.duration(s.duration_s) if s.duration_s] | select | join(" · ") }}{% if s.distance_m and s.kind in run_kinds and status != "done" and caps[d.day] and s.distance_m > caps[d.day] %} <span class="badge" title="Over the longest run that day without a spike, based on runs done so far">over {{ f.dist(caps[d.day], floor=True) }}</span>{% endif %}{% endif %}</td>
-    <td>{% if a %}<a href="https://www.strava.com/activities/{{ a.source_id }}" rel="noopener" target="_blank">{{ a.name }}</a>{% if not a.is_run %} <span class="muted">({{ a.sport }})</span>{% endif %}{% if a.id in spikes %} <span class="badge" title="Longer than your longest run in the prior 30 days">spike +{{ f.num(spikes[a.id]) }}%</span>{% endif %}{% endif %}</td>
-    <td class="num">{{ f.dist(a.distance_m) if a else "" }}</td>
-    <td class="num">{{ f.pace(a.moving_s, a.distance_m) if a and a.is_run else "" }}</td>
-    <td class="num">{{ f.num(a.avg_hr) if a else "" }}</td>
+  <tr class="{{ 'rest' if status == 'rest' }}{{ ' today' if d.day == today }}{{ ' cont' if not loop.last }}">
+    <td class="day">{% if loop.first %}{{ label }}{% endif %}</td>
+    <td>{% if s %}
+      <b>{{ s.kind }}</b>{% set size = [f.dist(s.distance_m) if s.distance_m, f.duration(s.duration_s) if s.duration_s] | select | join(" · ") %}{% if size %} {{ size }}{% endif %}
+      {% if s.distance_m and s.kind in run_kinds and status != "done" and caps[d.day] and s.distance_m > caps[d.day] %}<span class="badge" title="Over the longest run that day without a spike, based on runs done so far">over {{ f.dist(caps[d.day], floor=True) }}</span>{% endif %}
+      {% if s.notes %}<span class="note">{{ s.notes }}</span>{% endif %}
+    {% endif %}</td>
+    <td>{% if a %}
+      <a href="https://www.strava.com/activities/{{ a.source_id }}" rel="noopener" target="_blank">{{ a.name }}</a>{% if not a.is_run %} <span class="muted">({{ a.sport }})</span>{% endif %}{% if a.id in spikes %} <span class="badge" title="Longer than your longest run in the prior 30 days">spike +{{ f.num(spikes[a.id]) }}%</span>{% endif %}
+      <span class="note">{{ [f.dist(a.distance_m), f.pace(a.moving_s, a.distance_m) if a.is_run, f.num(a.avg_hr) ~ " bpm" if a.avg_hr] | select | join(" · ") }}</span>
+    {% endif %}</td>
     <td class="status-{{ status }}">{{ status }}</td>
     <td class="actions">{% if s %}
       <a href="?edit={{ s.id }}#session">Edit</a>
@@ -55,12 +56,11 @@
     {% endif %}</td>
   </tr>
   {% else %}
-  <tr><td>{% if d.day == today %}<b>{{ label }}</b>{% else %}{{ label }}{% endif %}</td><td colspan="8" class="muted">–</td></tr>
+  <tr class="rest{{ ' today' if d.day == today }}"><td class="day">{{ label }}</td><td colspan="4">–</td></tr>
   {% endfor %}
   {% endfor %}
 </table>
 </div>
-<p class="muted">Sessions match activities on the same day: run types match runs, "cross" matches other activities. A planned run is flagged when it's more than 10% longer than your longest run in the 30 days before it (a long-run spike; see Load). Only runs already done count, so later days' limits can rise as you train.</p>
 
 {% if not wk.sessions %}
 <form method="post" action="/running/plan/copy">
@@ -69,7 +69,8 @@
 </form>
 {% endif %}
 
-<h2 id="session">{{ "Edit session" if edit_id else "Add session" }}</h2>
+<details class="edit" id="session"{% if edit_id or errors.session %} open{% endif %}>
+<summary>{{ "Edit session" if edit_id else "Add session" }}</summary>
 {% if errors.session %}<p class="error">{{ errors.session }}</p>{% endif %}
 <form class="form" method="post" action="/running/plan">
   <input type="hidden" name="week" value="{{ monday }}">
@@ -92,8 +93,10 @@
     {% if edit_id %}<a class="button" href="?week={{ monday }}">Cancel</a>{% endif %}
   </div>
 </form>
+</details>
 
-<h2 id="target">Week target</h2>
+<details class="edit" id="target"{% if errors.target %} open{% endif %}>
+<summary>Week target</summary>
 {% if errors.target %}<p class="error">{{ errors.target }}</p>{% endif %}
 <form class="form" method="post" action="/running/plan/target">
   <input type="hidden" name="week" value="{{ monday }}">
@@ -104,8 +107,10 @@
   <div class="row"><button>Save target</button></div>
 </form>
 <p class="muted">Leave every field empty to clear this week's target.</p>
+</details>
 
-<h2 id="phases">Phases</h2>
+<details class="edit" id="phases"{% if phase_id or errors.phase %} open{% endif %}>
+<summary>Phases{% if phases %} ({{ phases | length }}){% endif %}</summary>
 {% if phases %}
 <div class="scroll">
 <table>
@@ -127,7 +132,6 @@
 {% else %}
 <p class="muted">No phases yet. A phase is a block of weeks with one focus, like a base rebuild or a race build.</p>
 {% endif %}
-
 <h3>{{ "Edit phase" if phase_id else "Add phase" }}</h3>
 {% if errors.phase %}<p class="error">{{ errors.phase }}</p>{% endif %}
 <form class="form" method="post" action="/running/plan/phase">
@@ -142,4 +146,10 @@
     {% if phase_id %}<a class="button" href="?week={{ monday }}#phases">Cancel</a>{% endif %}
   </div>
 </form>
+</details>
+
+<details class="edit">
+<summary>How matching and spike flags work</summary>
+<p class="muted">Sessions match activities on the same day: run types match runs, "cross" matches other activities. A planned run is flagged when it's more than 10% longer than your longest run in the 30 days before it (a long-run spike; see Load). Only runs already done count, so later days' limits can rise as you train.</p>
+</details>
 {% endblock %}
